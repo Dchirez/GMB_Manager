@@ -15,7 +15,7 @@ class User(db.Model):
     """
     __tablename__ = 'users'
 
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
     google_id = db.Column(db.String(255), unique=True, nullable=False)  # Google sub
     email = db.Column(db.String(255), unique=True, nullable=False)
     name = db.Column(db.String(255), nullable=False)
@@ -45,7 +45,7 @@ class Fiche(db.Model):
     __tablename__ = 'fiches'
 
     id = db.Column(db.String(255), primary_key=True, default=lambda: str(uuid.uuid4()))  # UUID or Google location ID
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    user_id = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=False)
     nom = db.Column(db.String(255), nullable=False)
     categorie = db.Column(db.String(255), nullable=True)
     adresse = db.Column(db.Text, nullable=True)

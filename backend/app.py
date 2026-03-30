@@ -9,6 +9,7 @@ from flask_session import Session
 import jwt
 from functools import wraps
 import requests
+from sqlalchemy import text
 from services.gmb_service import get_fiches_by_user, calculer_score
 from models import db, User, Fiche, Avis, Publication
 
@@ -575,10 +576,24 @@ def server_error(error):
 
 # ==================== DATABASE INITIALIZATION ====================
 
+def migrate_to_bigint():
+    """Migrate user_id columns from Integer to BigInteger"""
+    try:
+        # Alter users.id to BigInteger
+        db.session.execute(text('ALTER TABLE users ALTER COLUMN id TYPE bigint'))
+        # Alter fiches.user_id to BigInteger
+        db.session.execute(text('ALTER TABLE fiches ALTER COLUMN user_id TYPE bigint'))
+        db.session.commit()
+        logger.info("✓ Migration: user_id columns changed to BigInteger")
+    except Exception as e:
+        logger.warning(f"Migration skipped (already done or table doesn't exist): {e}")
+
 @app.before_request
 def create_tables():
-    """Create database tables if they don't exist"""
+    """Create database tables if they don't exist and apply migrations"""
     db.create_all()
+    # Apply migration on first request (idempotent)
+    migrate_to_bigint()
 
 if __name__ == '__main__':
     with app.app_context():
