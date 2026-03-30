@@ -29,19 +29,31 @@ gérer les avis clients et créer des publications.
 10. Toutes les requêtes API incluent : Authorization: Bearer JWT
 
 ## 4. Ce qui fonctionne ✅
+### Authentification & Sécurité
 - Authentification Google OAuth 2.0 complète
-- JWT tokens (génération + validation)
+- JWT tokens (génération + validation) avec google_access_token inclus
 - Auth guard basé sur localStorage
 - Auth interceptor (ajoute Bearer token automatiquement)
-- Dashboard avec liste des 4 fiches démo de Rouvroy
+- Déconnexion avec suppression localStorage
+
+### Intégration Google Business Profile API (NEW)
+- GET /api/gmb/fiches appelle maintenant l'API réelle Google Business Profile
+  * Récupère les vrais comptes via Account Management API
+  * Récupère les locations/fiches via Business Information API
+  * Mappe les données Google au format interne
+  * Fallback automatique sur fiches démo en cas d'erreur
+- Logging détaillé des appels API pour debugging
+- Gestion des erreurs (token expiré, API inaccessible, timeouts)
+- Scope OAuth : userinfo.email, userinfo.profile, openid, business.manage
+
+### Frontend Angular
+- Dashboard avec liste des fiches (vraies ou démo)
 - Score de complétude /100 avec barre de progression colorée
   (rouge <40, orange <70, vert ≥70)
 - Navigation vers détail d'une fiche (/fiche/:id)
 - Affichage détail fiche avec formulaire d'édition
 - Sauvegarde fiche PUT /gmb/fiches/:id en mode démo
-- Redirection vers /dashboard après sauvegarde fiche ✅
-- Recalcul score après modification fiche ✅
-- Déconnexion avec suppression localStorage
+- Recalcul score après modification fiche
 - Page Avis (/avis/:id) :
   * Liste avis avec étoiles, auteur, date, commentaire
   * Note moyenne en haut
@@ -49,11 +61,13 @@ gérer les avis clients et créer des publications.
 - Page Publications (/publications/:id) :
   * Liste publications existantes (titre, contenu, date, statut)
   * Formulaire création + POST /publications/fiches/:id/posts
-- Mode démo avec 4 vrais commerces de Rouvroy :
-  * Boulangerie Martin (score: 30/100)
-  * Karact'Hair (score: 70/100)
-  * Friterie Aux Bonnes Saveurs (score: 30/100)
-  * MS Automobiles (score: 30/100)
+
+### Mode démo avec 4 vrais commerces de Rouvroy
+- Boulangerie Martin (score: 30/100)
+- Karact'Hair (score: 70/100)
+- Friterie Aux Bonnes Saveurs (score: 30/100)
+- MS Automobiles (score: 30/100)
+- Accessible si pas de vraies fiches GMB disponibles
 
 ## 5. Lier le dépôt distant et pousser
 ```bash
@@ -63,8 +77,9 @@ git push -u origin main
 ```
 
 ## 6. Pas encore implémenté ❌
-- Connexion aux vraies données GMB (nécessite compte Google Business)
-- Persistance des données (base de données) — actuellement tout en mémoire
+- Persistance des modifications de fiches (base de données) — actuellement en mémoire
+- Synchronisation des éditions avec l'API Google Business Profile
+- Gestion des avis & publications en temps réel via API Google
 
 ## 7. Variables d'environnement requises (.env)
 ```
@@ -100,7 +115,42 @@ npm install
 ng serve
 ```
 
+## 9b. Testing l'intégration Google Business Profile API
+
+### Logs en backend
+Lors du GET /api/gmb/fiches, le backend log:
+```
+Récupération des fiches pour l'utilisateur user@example.com
+Récupération des comptes GMB...
+Trouvé X compte(s) GMB
+Récupération des locations du compte accounts/123...
+Trouvé Y location(s) pour le compte accounts/123
+Récupération réussie: Z fiche(s)
+```
+
+### Fallback sur démo
+Si erreur API (token expiré, pas de fiches, timeout):
+```
+Impossible de récupérer les fiches GMB, fallback sur démo
+Utilisation des fiches démo
+```
+
+### Debugging
+1. Vérifier que le google_access_token est bien inclus dans le JWT:
+   ```bash
+   # Décoder le token stocké dans localStorage('auth_token')
+   ```
+
+2. Vérifier les scopes demandés dans auth_service.py:
+   ```python
+   SCOPES = ['userinfo.email', 'userinfo.profile', 'openid', 'business.manage']
+   ```
+
+3. Vérifier les réponses API avec les logs Flask (lancement avec DEBUG=1)
+
 ## 10. Prochaines étapes prioritaires
-1. Connecter les vraies données GMB (compte Google Business requis)
-2. Ajouter une base de données (SQLite ou PostgreSQL) pour persister les données
-3. Déploiement (Render pour le backend, Vercel pour le frontend)
+1. Tester avec un vrai compte Google Business (vérifier appels API réussis)
+2. Implémenter PUT /gmb/fiches/:id pour synchroniser les éditions avec Google Business Profile API
+3. Ajouter une base de données (SQLite ou PostgreSQL) pour persister les modifications locales
+4. Intégrer l'API GMB pour les avis et publications (lecture et écriture)
+5. Déploiement (Render pour le backend, Vercel pour le frontend)
