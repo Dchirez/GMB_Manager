@@ -232,7 +232,7 @@ def auth_callback():
 
         # Générer JWT
         jwt_token = jwt.encode({
-            'user_id': google_id,
+            'user_id': user.id,
             'email': email,
             'name': name,
             'google_access_token': access_token
@@ -339,7 +339,7 @@ def update_fiche(fiche_id):
             fiche.horaires = data.get('horaires', fiche.horaires)
             fiche.description = data.get('description', fiche.description)
             fiche.score = calculer_score(fiche.to_dict())
-            fiche.updated_at = datetime.utcnow()
+            fiche.updated_at = datetime.now()
 
             db.session.commit()
             return jsonify(fiche.to_dict()), 200
