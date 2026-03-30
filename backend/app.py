@@ -162,6 +162,13 @@ def token_required(f):
 
         try:
             data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+            # Ensure user_id is integer (convert from string if needed for backward compatibility)
+            if 'user_id' in data and isinstance(data['user_id'], str):
+                try:
+                    data['user_id'] = int(data['user_id'])
+                except ValueError:
+                    # If user_id is not convertible to int, keep as string (email-based fallback)
+                    logger.warning(f"user_id '{data['user_id']}' is not numeric, keeping as string")
             request.user = data
         except jwt.ExpiredSignatureError:
             return jsonify({'message': 'Token has expired'}), 401
