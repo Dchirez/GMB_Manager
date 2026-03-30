@@ -8,6 +8,7 @@ from flask_cors import CORS
 from flask_session import Session
 import jwt
 from functools import wraps
+import requests
 from services.gmb_service import get_fiches_by_user, calculer_score
 
 # Configure logging
@@ -237,6 +238,82 @@ def get_fiches():
     # Fallback: retourner les fiches démo
     logger.info("Utilisation des fiches démo")
     return jsonify(FICHES_DEMO), 200
+
+@app.route('/api/gmb/debug', methods=['GET'])
+@token_required
+def debug_gmb_api():
+    """
+    [DEBUG TEMPORAIRE] Endpoint de debug pour tester l'API Google Business Profile
+    Retourne la réponse brute de l'API Google sans aucun traitement ni fallback
+    """
+    google_access_token = request.user.get('google_access_token')
+
+    if not google_access_token:
+        return jsonify({
+            'error': 'No google_access_token in JWT',
+            'user': request.user
+        }), 400
+
+    try:
+        headers = {
+            'Authorization': f'Bearer {google_access_token}',
+            'Content-Type': 'application/json'
+        }
+
+        # Appeler l'API Google Business Profile - Account Management
+        accounts_url = 'https://mybusinessaccountmanagement.googleapis.com/v1/accounts'
+        logger.info(f"[DEBUG] Appel API: GET {accounts_url}")
+        logger.info(f"[DEBUG] Token: {google_access_token[:30]}...")
+
+        response = requests.get(accounts_url, headers=headers, timeout=10)
+
+        logger.info(f"[DEBUG] Status: {response.status_code}")
+        logger.info(f"[DEBUG] Response body length: {len(response.text)}")
+
+        # Parser la réponse JSON si possible
+        response_data = None
+        try:
+            response_data = response.json()
+        except:
+            response_data = response.text
+
+        return jsonify({
+            'timestamp': datetime.now().isoformat(),
+            'debug_info': 'Réponse brute de l\'API Google Business Profile',
+            'api_endpoint': accounts_url,
+            'status_code': response.status_code,
+            'headers_sent': {
+                'Authorization': f'Bearer {google_access_token[:30]}...',
+                'Content-Type': 'application/json'
+            },
+            'response_headers': dict(response.headers),
+            'response_body': response_data,
+            'user': {
+                'email': request.user.get('email'),
+                'user_id': request.user.get('user_id'),
+                'name': request.user.get('name')
+            },
+            'success': response.status_code == 200
+        }), response.status_code
+
+    except requests.exceptions.Timeout:
+        return jsonify({
+            'error': 'Timeout lors de l\'appel à l\'API Google (10s)',
+            'api_endpoint': 'https://mybusinessaccountmanagement.googleapis.com/v1/accounts',
+            'timestamp': datetime.now().isoformat()
+        }), 504
+    except requests.exceptions.RequestException as e:
+        return jsonify({
+            'error': f'Erreur de requête: {str(e)}',
+            'api_endpoint': 'https://mybusinessaccountmanagement.googleapis.com/v1/accounts',
+            'timestamp': datetime.now().isoformat()
+        }), 500
+    except Exception as e:
+        return jsonify({
+            'error': f'Erreur inattendue: {str(e)}',
+            'api_endpoint': 'https://mybusinessaccountmanagement.googleapis.com/v1/accounts',
+            'timestamp': datetime.now().isoformat()
+        }), 500
 
 @app.route('/api/gmb/fiches/<fiche_id>', methods=['GET'])
 @token_required
