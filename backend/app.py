@@ -198,34 +198,53 @@ def auth_callback():
 
     try:
         user_data, access_token = exchange_code_for_token(code)
+        logger.info(f"OAuth user_data received: {user_data.keys()}")
+
+        # Extract google_id (sub from OpenID Connect) with fallback to id, then email
+        google_id = user_data.get('sub') or user_data.get('id')
+        email = user_data.get('email')
+        name = user_data.get('name', 'Unknown User')
+
+        if not google_id:
+            # Final fallback: use email as unique identifier
+            if not email:
+                raise Exception("Cannot identify user: missing both sub/id and email")
+            google_id = f'email_{email}'
+            logger.warning(f"Using email-based google_id: {google_id}")
+        else:
+            logger.info(f"Google ID extracted: {google_id}")
 
         # Store or update user in database
-        user = User.query.filter_by(google_id=user_data.get('sub')).first()
+        user = User.query.filter_by(google_id=google_id).first()
         if not user:
+            logger.info(f"Creating new user: {email} (google_id={google_id})")
             user = User(
-                google_id=user_data.get('sub'),
-                email=user_data.get('email'),
-                name=user_data.get('name'),
+                google_id=google_id,
+                email=email,
+                name=name,
                 google_access_token=access_token
             )
             db.session.add(user)
         else:
+            logger.info(f"Updating existing user: {email}")
             user.google_access_token = access_token
         db.session.commit()
 
         # Générer JWT
         jwt_token = jwt.encode({
-            'user_id': user_data.get('sub'),
-            'email': user_data.get('email'),
-            'name': user_data.get('name'),
+            'user_id': google_id,
+            'email': email,
+            'name': name,
             'google_access_token': access_token
         }, app.config['SECRET_KEY'], algorithm='HS256')
 
         # Rediriger vers le frontend avec le token
         frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:4200')
+        logger.info(f"OAuth successful for {email}, redirecting to frontend")
         return redirect(f'{frontend_url}/auth/callback?token={jwt_token}')
 
     except Exception as e:
+        logger.error(f"OAuth callback error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/auth/me', methods=['GET'])

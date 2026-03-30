@@ -53,8 +53,8 @@ def exchange_code_for_token(code):
 
     access_token = tokens.get('access_token')
 
-    # Étape 2: Récupérer les infos utilisateur
-    userinfo_url = 'https://www.googleapis.com/oauth2/v2/userinfo'
+    # Étape 2: Récupérer les infos utilisateur via OpenID Connect (retourne 'sub')
+    userinfo_url = 'https://openidconnect.googleapis.com/v1/userinfo'
     headers = {'Authorization': f'Bearer {access_token}'}
 
     userinfo_response = requests.get(userinfo_url, headers=headers)
@@ -62,5 +62,15 @@ def exchange_code_for_token(code):
 
     if 'error' in user_data:
         raise Exception(f"Failed to get user info: {user_data['error']}")
+
+    # Ensure we have the Google ID (sub field from OpenID Connect)
+    if 'sub' not in user_data:
+        # Fallback to v2 endpoint if OpenID Connect doesn't have 'sub'
+        userinfo_url_fallback = 'https://www.googleapis.com/oauth2/v2/userinfo'
+        userinfo_response = requests.get(userinfo_url_fallback, headers=headers)
+        user_data = userinfo_response.json()
+
+        if 'id' in user_data and 'sub' not in user_data:
+            user_data['sub'] = user_data['id']
 
     return user_data, access_token
