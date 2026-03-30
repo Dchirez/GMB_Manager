@@ -1,6 +1,7 @@
 # Backend
 backend/.env
 backend/__pycache__/
+backend/*/__pycache__/
 backend/*.pyc
 backend/*.pyo
 backend/*.egg-info/
@@ -9,6 +10,7 @@ backend/build/
 backend/venv/
 backend/.venv/
 backend/.DS_Store
+backend/flask_session/
 
 # Frontend
 frontend/node_modules/
@@ -19,9 +21,10 @@ frontend/.DS_Store
 frontend/npm-debug.log*
 frontend/yarn-error.log*
 
-# IDE
+# IDE & Claude Code
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 *~
