@@ -31,29 +31,29 @@ import { GmbService, Fiche } from '../../services/gmb.service';
 
         <div *ngIf="!isLoading() && fiche()" class="bg-white rounded-lg shadow-md p-8">
           <!-- Score -->
-          <div class="mb-6 p-4 bg-gray-50 rounded-lg">
+          <div *ngIf="fiche()" class="mb-6 p-4 bg-gray-50 rounded-lg">
             <div class="flex justify-between items-center">
               <span class="text-lg font-medium text-gray-700">Score de complétude</span>
-              <span class="text-3xl font-bold" [ngClass]="getScoreClass(fiche().score)">
-                {{ fiche().score }}/100
+              <span class="text-3xl font-bold" [ngClass]="getScoreClass(fiche()!.score)">
+                {{ fiche()!.score }}/100
               </span>
             </div>
             <div class="w-full bg-gray-200 rounded-full h-4 mt-3">
               <div
                 class="h-4 rounded-full transition-all"
-                [style.width.%]="fiche().score"
-                [ngClass]="getScoreBarClass(fiche().score)"
+                [style.width.%]="fiche()!.score"
+                [ngClass]="getScoreBarClass(fiche()!.score)"
               ></div>
             </div>
           </div>
 
           <!-- Form -->
-          <form (ngSubmit)="saveFiche()" class="space-y-6">
+          <form *ngIf="fiche()" (ngSubmit)="saveFiche()" class="space-y-6">
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-2">Nom de l'établissement</label>
               <input
                 type="text"
-                [(ngModel)]="fiche().nom"
+                [(ngModel)]="fiche()!.nom"
                 name="nom"
                 class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -63,7 +63,7 @@ import { GmbService, Fiche } from '../../services/gmb.service';
               <label class="block text-sm font-medium text-gray-700 mb-2">Téléphone</label>
               <input
                 type="tel"
-                [(ngModel)]="fiche().telephone"
+                [(ngModel)]="fiche()!.telephone"
                 name="telephone"
                 class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -73,7 +73,7 @@ import { GmbService, Fiche } from '../../services/gmb.service';
               <label class="block text-sm font-medium text-gray-700 mb-2">Adresse</label>
               <input
                 type="text"
-                [(ngModel)]="fiche().adresse"
+                [(ngModel)]="fiche()!.adresse"
                 name="adresse"
                 class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -83,7 +83,7 @@ import { GmbService, Fiche } from '../../services/gmb.service';
               <label class="block text-sm font-medium text-gray-700 mb-2">Site Web</label>
               <input
                 type="url"
-                [(ngModel)]="fiche().site_web"
+                [(ngModel)]="fiche()!.site_web"
                 name="site_web"
                 class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -93,7 +93,7 @@ import { GmbService, Fiche } from '../../services/gmb.service';
               <label class="block text-sm font-medium text-gray-700 mb-2">Horaires</label>
               <input
                 type="text"
-                [(ngModel)]="fiche().horaires"
+                [(ngModel)]="fiche()!.horaires"
                 name="horaires"
                 placeholder="Ex: Lun-Sam 9h-19h"
                 class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -103,7 +103,7 @@ import { GmbService, Fiche } from '../../services/gmb.service';
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
               <textarea
-                [(ngModel)]="fiche().description"
+                [(ngModel)]="fiche()!.description"
                 name="description"
                 rows="4"
                 class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -157,16 +157,17 @@ export class FicheDetailComponent implements OnInit {
   }
 
   saveFiche(): void {
-    if (!this.fiche()) return;
+    const ficheData = this.fiche();
+    if (!ficheData) return;
 
     this.isSaving.set(true);
     const updates = {
-      nom: this.fiche()!.nom,
-      telephone: this.fiche()!.telephone,
-      adresse: this.fiche()!.adresse,
-      site_web: this.fiche()!.site_web,
-      horaires: this.fiche()!.horaires,
-      description: this.fiche()!.description
+      nom: ficheData.nom,
+      telephone: ficheData.telephone,
+      adresse: ficheData.adresse,
+      site_web: ficheData.site_web,
+      horaires: ficheData.horaires,
+      description: ficheData.description
     };
 
     this.gmbService.updateFiche(this.ficheId, updates).subscribe({
