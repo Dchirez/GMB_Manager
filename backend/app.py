@@ -200,10 +200,10 @@ def auth_callback():
         user_data, access_token = exchange_code_for_token(code)
 
         # Store or update user in database
-        user = User.query.get(user_data.get('sub'))
+        user = User.query.filter_by(google_id=user_data.get('sub')).first()
         if not user:
             user = User(
-                id=user_data.get('sub'),
+                google_id=user_data.get('sub'),
                 email=user_data.get('email'),
                 name=user_data.get('name'),
                 google_access_token=access_token
@@ -563,5 +563,12 @@ def create_tables():
 
 if __name__ == '__main__':
     with app.app_context():
+        # Reset database if RESET_DB environment variable is set
+        if os.getenv('RESET_DB') == 'true':
+            logger.info("🔄 Resetting database (RESET_DB=true)...")
+            db.drop_all()
+            logger.info("✓ Database tables dropped")
+
         db.create_all()
+        logger.info("✓ Database tables created")
     app.run(debug=True, host='0.0.0.0', port=5000)

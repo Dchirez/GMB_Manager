@@ -21,13 +21,13 @@ def seed_demo_data():
 
     # Create demo user
     demo_user = User(
-        id='demo_user',
+        google_id='demo_user_google_sub',
         email='demo@gmb-manager.local',
         name='Demo User'
     )
     db.session.add(demo_user)
     db.session.commit()
-    print(f"✓ Created demo user: {demo_user.email}")
+    print(f"✓ Created demo user: {demo_user.email} (id={demo_user.id})")
 
     # Fiches demo
     fiches_data = [
@@ -81,7 +81,7 @@ def seed_demo_data():
     for data in fiches_data:
         fiche = Fiche(
             id=data['id'],
-            user_id='demo_user',
+            user_id=demo_user.id,  # Use auto-increment id
             nom=data['nom'],
             categorie=data['categorie'],
             adresse=data['adresse'],

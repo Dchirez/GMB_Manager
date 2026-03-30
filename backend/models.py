@@ -15,7 +15,8 @@ class User(db.Model):
     """
     __tablename__ = 'users'
 
-    id = db.Column(db.String(255), primary_key=True)  # Google sub
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    google_id = db.Column(db.String(255), unique=True, nullable=False)  # Google sub
     email = db.Column(db.String(255), unique=True, nullable=False)
     name = db.Column(db.String(255), nullable=False)
     google_access_token = db.Column(db.Text, nullable=True)
@@ -27,7 +28,7 @@ class User(db.Model):
 
     def to_dict(self):
         return {
-            'user_id': self.id,
+            'user_id': self.google_id,
             'email': self.email,
             'name': self.name,
             'created_at': self.created_at.isoformat() if self.created_at else None
@@ -43,8 +44,8 @@ class Fiche(db.Model):
     """
     __tablename__ = 'fiches'
 
-    id = db.Column(db.String(255), primary_key=True)  # Can be UUID or Google location ID
-    user_id = db.Column(db.String(255), db.ForeignKey('users.id'), nullable=False)
+    id = db.Column(db.String(255), primary_key=True, default=lambda: str(uuid.uuid4()))  # UUID or Google location ID
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     nom = db.Column(db.String(255), nullable=False)
     categorie = db.Column(db.String(255), nullable=True)
     adresse = db.Column(db.Text, nullable=True)
@@ -83,7 +84,7 @@ class Avis(db.Model):
     """
     __tablename__ = 'avis'
 
-    id = db.Column(db.String(255), primary_key=True)
+    id = db.Column(db.String(255), primary_key=True, default=lambda: str(uuid.uuid4()))
     fiche_id = db.Column(db.String(255), db.ForeignKey('fiches.id'), nullable=False)
     auteur = db.Column(db.String(255), nullable=False)
     note = db.Column(db.Integer, nullable=False)  # 1-5
@@ -112,7 +113,7 @@ class Publication(db.Model):
     """
     __tablename__ = 'publications'
 
-    id = db.Column(db.String(255), primary_key=True)
+    id = db.Column(db.String(255), primary_key=True, default=lambda: str(uuid.uuid4()))
     fiche_id = db.Column(db.String(255), db.ForeignKey('fiches.id'), nullable=False)
     titre = db.Column(db.String(255), nullable=False)
     contenu = db.Column(db.Text, nullable=False)
