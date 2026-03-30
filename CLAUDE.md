@@ -76,19 +76,30 @@ git branch -M main
 git push -u origin main
 ```
 
-## 6. Pas encore implémenté ❌
-- Persistance des modifications de fiches (base de données) — actuellement en mémoire
+## 6. Persistance base de données ✅
+- PostgreSQL via SQLAlchemy (migrations vers Supabase)
+- Modèles : User, Fiche, Avis, Publication
+- Fallback démo si base de données vide (3-level cascade: Google API → BDD → Démo)
+- Seed script idempotent pour population des données démo
+
+## 6b. Pas encore implémenté ❌
 - Synchronisation des éditions avec l'API Google Business Profile
 - Gestion des avis & publications en temps réel via API Google
 
 ## 7. Variables d'environnement requises (.env)
 ```
+# Google OAuth 2.0
 GOOGLE_CLIENT_ID=xxx.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=xxx
 GOOGLE_REDIRECT_URI=http://localhost:5000/auth/callback
+
+# Flask Configuration
 FRONTEND_URL=http://localhost:4200
 SECRET_KEY=gmb-manager-super-secret-key-2026
 FLASK_ENV=development
+
+# Database Configuration (PostgreSQL/Supabase)
+DATABASE_URL=postgresql://user:password@localhost:5432/gmb_manager
 ```
 
 ## 8. Points techniques importants
@@ -100,12 +111,18 @@ FLASK_ENV=development
 
 ## 9. Lancer le projet
 
-### Backend
+### Backend (avec database)
 ```bash
 cd backend
 pip install -r requirements.txt
-cp .env.example .env  # remplir les vraies valeurs
+cp .env.example .env  # remplir DATABASE_URL et vraies valeurs Google
 python app.py
+```
+
+À la première exécution, les tables SQLAlchemy seront créées automatiquement.
+Pour peupler avec les données démo :
+```bash
+python seed.py
 ```
 
 ### Frontend
@@ -113,6 +130,12 @@ python app.py
 cd frontend
 npm install
 ng serve
+```
+
+### Build production frontend
+```bash
+ng build --configuration=production
+# Produit dans frontend/dist/ prêt pour Vercel
 ```
 
 ## 9b. Testing l'intégration Google Business Profile API
@@ -149,8 +172,12 @@ Utilisation des fiches démo
 3. Vérifier les réponses API avec les logs Flask (lancement avec DEBUG=1)
 
 ## 10. Prochaines étapes prioritaires
-1. Tester avec un vrai compte Google Business (vérifier appels API réussis)
-2. Implémenter PUT /gmb/fiches/:id pour synchroniser les éditions avec Google Business Profile API
-3. Ajouter une base de données (SQLite ou PostgreSQL) pour persister les modifications locales
-4. Intégrer l'API GMB pour les avis et publications (lecture et écriture)
-5. Déploiement (Render pour le backend, Vercel pour le frontend)
+1. **Tester localement avec PostgreSQL** — Configure DATABASE_URL vers Supabase, puis `python app.py` + `python seed.py`
+2. **Vérifier le fallback démo** — Test avec BDD vide pour confirmer affichage des 4 fiches démo
+3. **Tester avec un vrai compte Google Business** — Vérifier appels API réussis (3-level cascade: Google → BDD → Démo)
+4. **Déployer sur Render + Vercel** :
+   - Render : push code → configurer env vars (GOOGLE_CLIENT_*, DATABASE_URL, FLASK_ENV=production)
+   - Vercel : frontend build → configurer API URL (vers render-app.onrender.com)
+   - Tester flux OAuth en production
+5. **Synchronisation avec Google Business Profile API** — Implémenter PUT /gmb/fiches/:id pour édition de vraies fiches GMB
+6. **Intégrer l'API GMB pour avis/publications** — Lecture/écriture en temps réel

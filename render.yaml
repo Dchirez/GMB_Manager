@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: gmb-manager-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        value: https://<render-app>.onrender.com/auth/callback
+      - key: FRONTEND_URL
+        value: https://<vercel-app>.vercel.app
+      - key: SECRET_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: FLASK_ENV
+        value: production
+      - key: SESSION_TYPE
+        value: filesystem

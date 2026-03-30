@@ -10,6 +10,7 @@ import jwt
 from functools import wraps
 import requests
 from services.gmb_service import get_fiches_by_user, calculer_score
+from models import db, User, Fiche, Avis, Publication
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -18,6 +19,11 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
+# Set OAuth insecure transport flag for development only
+if os.getenv('FLASK_ENV') == 'development':
+    os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+    os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'
+
 app = Flask(__name__)
 
 # Configuration
@@ -25,6 +31,16 @@ app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'gmb-manager-super-secret-key
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_PERMANENT'] = False
 app.config['SESSION_USE_SIGNER'] = True
+
+# Database configuration
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
+    'DATABASE_URL',
+    'sqlite:///gmb_manager.db'  # Fallback to SQLite for development
+)
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Initialize database
+db.init_app(app)
 
 # Initialize Flask-Session
 Session(app)
@@ -43,7 +59,7 @@ CORS(app, resources={
     }
 })
 
-# Demo data - Fiches
+# Demo data - Fiches (fallback if database is empty)
 FICHES_DEMO = [
     {
         "id": "1",
@@ -91,7 +107,7 @@ FICHES_DEMO = [
     }
 ]
 
-# Demo data - Avis
+# Demo data - Avis (fallback if database is empty)
 AVIS_DEMO = {
     "1": [
         {"id": "a1", "auteur": "Marie D.", "note": 5, "date": "2024-12-01", "commentaire": "Excellent pain, toujours frais !", "reponse": None},
@@ -111,7 +127,7 @@ AVIS_DEMO = {
     ]
 }
 
-# Demo data - Publications
+# Demo data - Publications (fallback if database is empty)
 PUBLICATIONS_DEMO = {
     "1": [
         {"id": "p1", "titre": "Nouveauté : Pain au levain", "contenu": "Découvrez notre nouveau pain au levain artisanal, disponible chaque matin !", "date": "2024-12-01", "statut": "publié"},
@@ -183,6 +199,20 @@ def auth_callback():
     try:
         user_data, access_token = exchange_code_for_token(code)
 
+        # Store or update user in database
+        user = User.query.get(user_data.get('sub'))
+        if not user:
+            user = User(
+                id=user_data.get('sub'),
+                email=user_data.get('email'),
+                name=user_data.get('name'),
+                google_access_token=access_token
+            )
+            db.session.add(user)
+        else:
+            user.google_access_token = access_token
+        db.session.commit()
+
         # Générer JWT
         jwt_token = jwt.encode({
             'user_id': user_data.get('sub'),
@@ -217,12 +247,15 @@ def auth_me():
 def get_fiches():
     """
     Retourne la liste des fiches de l'utilisateur.
-    Tente d'abord de récupérer les vraies fiches via l'API Google Business Profile.
-    En cas d'erreur, fallback sur les fiches démo.
+    Ordre de priorité:
+    1. Essaie Google Business Profile API (vraies données)
+    2. Si Google échoue → cherche en BDD
+    3. Si BDD vide → retourne FICHES_DEMO
     """
     google_access_token = request.user.get('google_access_token')
+    user_id = request.user.get('user_id')
 
-    # Tenter de récupérer les vraies fiches Google Business Profile
+    # Étape 1: Tenter de récupérer les vraies fiches Google Business Profile
     if google_access_token:
         logger.info(f"Récupération des fiches pour l'utilisateur {request.user.get('email')}")
         fiches = get_fiches_by_user(google_access_token)
@@ -231,13 +264,86 @@ def get_fiches():
             logger.info(f"✅ {len(fiches)} fiche(s) GMB trouvée(s)")
             return jsonify(fiches), 200
         else:
-            logger.warning("Impossible de récupérer les fiches GMB, fallback sur démo")
+            logger.warning("Impossible de récupérer les fiches GMB, essai BDD")
     else:
-        logger.warning("Pas de google_access_token disponible")
+        logger.warning("Pas de google_access_token disponible, essai BDD")
 
-    # Fallback: retourner les fiches démo
+    # Étape 2: Chercher en BDD
+    try:
+        db_fiches = Fiche.query.filter_by(user_id=user_id).all()
+        if db_fiches:
+            logger.info(f"✅ {len(db_fiches)} fiche(s) trouvée(s) en BDD")
+            return jsonify([f.to_dict() for f in db_fiches]), 200
+    except Exception as e:
+        logger.error(f"Erreur lors de la lecture en BDD: {e}")
+
+    # Étape 3: Fallback sur fiches démo
     logger.info("Utilisation des fiches démo")
     return jsonify(FICHES_DEMO), 200
+
+@app.route('/api/gmb/fiches/<fiche_id>', methods=['GET'])
+@token_required
+def get_fiche(fiche_id):
+    """Retourne une fiche spécifique"""
+    user_id = request.user.get('user_id')
+
+    # Cherche en BDD d'abord
+    try:
+        fiche = Fiche.query.filter_by(id=fiche_id, user_id=user_id).first()
+        if fiche:
+            return jsonify(fiche.to_dict()), 200
+    except Exception as e:
+        logger.error(f"Erreur lors de la lecture en BDD: {e}")
+
+    # Fallback sur démo
+    for fiche in FICHES_DEMO:
+        if fiche['id'] == fiche_id:
+            return jsonify(fiche), 200
+
+    return jsonify({'error': 'Fiche not found'}), 404
+
+@app.route('/api/gmb/fiches/<fiche_id>', methods=['PUT'])
+@token_required
+def update_fiche(fiche_id):
+    """Met à jour une fiche et recalcule le score"""
+    user_id = request.user.get('user_id')
+    data = request.get_json()
+
+    # Cherche la fiche en BDD
+    try:
+        fiche = Fiche.query.filter_by(id=fiche_id, user_id=user_id).first()
+        if fiche:
+            fiche.nom = data.get('nom', fiche.nom)
+            fiche.telephone = data.get('telephone', fiche.telephone)
+            fiche.adresse = data.get('adresse', fiche.adresse)
+            fiche.site_web = data.get('site_web', fiche.site_web)
+            fiche.horaires = data.get('horaires', fiche.horaires)
+            fiche.description = data.get('description', fiche.description)
+            fiche.score = calculer_score(fiche.to_dict())
+            fiche.updated_at = datetime.utcnow()
+
+            db.session.commit()
+            return jsonify(fiche.to_dict()), 200
+    except Exception as e:
+        logger.error(f"Erreur lors de la mise à jour en BDD: {e}")
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+    # Fallback sur démo (modification en mémoire)
+    for fiche in FICHES_DEMO:
+        if fiche['id'] == fiche_id:
+            fiche.update({
+                'nom': data.get('nom', fiche.get('nom')),
+                'telephone': data.get('telephone', fiche.get('telephone')),
+                'adresse': data.get('adresse', fiche.get('adresse')),
+                'site_web': data.get('site_web', fiche.get('site_web')),
+                'horaires': data.get('horaires', fiche.get('horaires')),
+                'description': data.get('description', fiche.get('description')),
+            })
+            fiche['score'] = calculer_score(fiche)
+            return jsonify(fiche), 200
+
+    return jsonify({'error': 'Fiche not found'}), 404
 
 @app.route('/api/gmb/debug', methods=['GET'])
 @token_required
@@ -315,42 +421,21 @@ def debug_gmb_api():
             'timestamp': datetime.now().isoformat()
         }), 500
 
-@app.route('/api/gmb/fiches/<fiche_id>', methods=['GET'])
-@token_required
-def get_fiche(fiche_id):
-    """Retourne une fiche spécifique"""
-    for fiche in FICHES_DEMO:
-        if fiche['id'] == fiche_id:
-            return jsonify(fiche), 200
-    return jsonify({'error': 'Fiche not found'}), 404
-
-@app.route('/api/gmb/fiches/<fiche_id>', methods=['PUT'])
-@token_required
-def update_fiche(fiche_id):
-    """Met à jour une fiche et recalcule le score"""
-    data = request.get_json()
-
-    for fiche in FICHES_DEMO:
-        if fiche['id'] == fiche_id:
-            fiche.update({
-                'nom': data.get('nom', fiche.get('nom')),
-                'telephone': data.get('telephone', fiche.get('telephone')),
-                'adresse': data.get('adresse', fiche.get('adresse')),
-                'site_web': data.get('site_web', fiche.get('site_web')),
-                'horaires': data.get('horaires', fiche.get('horaires')),
-                'description': data.get('description', fiche.get('description')),
-            })
-            fiche['score'] = calculer_score(fiche)
-            return jsonify(fiche), 200
-
-    return jsonify({'error': 'Fiche not found'}), 404
-
 # ==================== AVIS ROUTES ====================
 
 @app.route('/api/avis/fiches/<fiche_id>/avis', methods=['GET'])
 @token_required
 def get_avis(fiche_id):
     """Retourne la liste des avis pour une fiche"""
+    # Cherche en BDD d'abord
+    try:
+        avis_list = Avis.query.filter_by(fiche_id=fiche_id).all()
+        if avis_list:
+            return jsonify([a.to_dict() for a in avis_list]), 200
+    except Exception as e:
+        logger.error(f"Erreur lors de la lecture des avis en BDD: {e}")
+
+    # Fallback sur démo
     avis = AVIS_DEMO.get(fiche_id, [])
     return jsonify(avis), 200
 
@@ -364,6 +449,18 @@ def post_reponse(fiche_id, avis_id):
     if not reponse_text:
         return jsonify({'error': 'Reponse text is required'}), 400
 
+    # Cherche en BDD d'abord
+    try:
+        avis = Avis.query.filter_by(id=avis_id, fiche_id=fiche_id).first()
+        if avis:
+            avis.reponse = reponse_text
+            db.session.commit()
+            return jsonify(avis.to_dict()), 200
+    except Exception as e:
+        logger.error(f"Erreur lors de la mise à jour de l'avis en BDD: {e}")
+        db.session.rollback()
+
+    # Fallback sur démo
     if fiche_id not in AVIS_DEMO:
         return jsonify({'error': 'Fiche not found'}), 404
 
@@ -380,6 +477,15 @@ def post_reponse(fiche_id, avis_id):
 @token_required
 def get_publications(fiche_id):
     """Retourne la liste des publications pour une fiche"""
+    # Cherche en BDD d'abord
+    try:
+        publications_list = Publication.query.filter_by(fiche_id=fiche_id).all()
+        if publications_list:
+            return jsonify([p.to_dict() for p in publications_list]), 200
+    except Exception as e:
+        logger.error(f"Erreur lors de la lecture des publications en BDD: {e}")
+
+    # Fallback sur démo
     publications = PUBLICATIONS_DEMO.get(fiche_id, [])
     return jsonify(publications), 200
 
@@ -394,10 +500,32 @@ def create_publication(fiche_id):
     if not titre or not contenu:
         return jsonify({'error': 'Titre and contenu are required'}), 400
 
+    # Essaie de créer en BDD
+    try:
+        # Génère un nouvel ID
+        import uuid
+        pub_id = str(uuid.uuid4())[:8]
+
+        publication = Publication(
+            id=pub_id,
+            fiche_id=fiche_id,
+            titre=titre,
+            contenu=contenu,
+            date=datetime.now().date(),
+            statut='publié'
+        )
+        db.session.add(publication)
+        db.session.commit()
+        return jsonify(publication.to_dict()), 201
+    except Exception as e:
+        logger.error(f"Erreur lors de la création de la publication en BDD: {e}")
+        db.session.rollback()
+
+    # Fallback sur démo
     if fiche_id not in PUBLICATIONS_DEMO:
         PUBLICATIONS_DEMO[fiche_id] = []
 
-    # Générer un ID pour la publication
+    # Génère un ID pour la publication
     max_id = 0
     for publications in PUBLICATIONS_DEMO.values():
         for pub in publications:
@@ -426,5 +554,14 @@ def not_found(error):
 def server_error(error):
     return jsonify({'error': 'Internal server error'}), 500
 
+# ==================== DATABASE INITIALIZATION ====================
+
+@app.before_request
+def create_tables():
+    """Create database tables if they don't exist"""
+    db.create_all()
+
 if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
     app.run(debug=True, host='0.0.0.0', port=5000)
