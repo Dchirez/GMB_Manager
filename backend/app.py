@@ -563,12 +563,12 @@ def create_tables():
 
 if __name__ == '__main__':
     with app.app_context():
-        # Reset database if RESET_DB environment variable is set
-        if os.getenv('RESET_DB') == 'true':
-            logger.info("🔄 Resetting database (RESET_DB=true)...")
-            db.drop_all()
-            logger.info("✓ Database tables dropped")
+        # TEMPORARY: Force reset to apply schema changes (user_id auto-increment, google_id column)
+        # Remove this block after schema migration is complete
+        logger.warning("⚠️  TEMPORARY: Dropping all tables to apply schema migration...")
+        db.drop_all()
+        logger.info("✓ Database tables dropped")
 
         db.create_all()
-        logger.info("✓ Database tables created")
+        logger.info("✓ Database tables recreated with new schema")
     app.run(debug=True, host='0.0.0.0', port=5000)
