@@ -1,5 +1,6 @@
 import os
 import json
+import logging
 from datetime import datetime
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify, redirect, session
@@ -7,6 +8,11 @@ from flask_cors import CORS
 from flask_session import Session
 import jwt
 from functools import wraps
+from services.gmb_service import get_fiches_by_user, calculer_score
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -119,23 +125,6 @@ PUBLICATIONS_DEMO = {
     ]
 }
 
-def calculer_score(fiche):
-    """Calcul du score de complétude de la fiche (0-100)"""
-    score = 0
-    if fiche.get("nom"):
-        score += 20
-    if fiche.get("telephone"):
-        score += 15
-    if fiche.get("adresse"):
-        score += 15
-    if fiche.get("site_web"):
-        score += 15
-    if fiche.get("horaires"):
-        score += 20
-    if fiche.get("description"):
-        score += 15
-    return score
-
 def token_required(f):
     """Décorateur pour valider le JWT"""
     @wraps(f)
@@ -225,7 +214,28 @@ def auth_me():
 @app.route('/api/gmb/fiches', methods=['GET'])
 @token_required
 def get_fiches():
-    """Retourne la liste de toutes les fiches"""
+    """
+    Retourne la liste des fiches de l'utilisateur.
+    Tente d'abord de récupérer les vraies fiches via l'API Google Business Profile.
+    En cas d'erreur, fallback sur les fiches démo.
+    """
+    google_access_token = request.user.get('google_access_token')
+
+    # Tenter de récupérer les vraies fiches Google Business Profile
+    if google_access_token:
+        logger.info(f"Récupération des fiches pour l'utilisateur {request.user.get('email')}")
+        fiches = get_fiches_by_user(google_access_token)
+
+        if fiches:
+            logger.info(f"✅ {len(fiches)} fiche(s) GMB trouvée(s)")
+            return jsonify(fiches), 200
+        else:
+            logger.warning("Impossible de récupérer les fiches GMB, fallback sur démo")
+    else:
+        logger.warning("Pas de google_access_token disponible")
+
+    # Fallback: retourner les fiches démo
+    logger.info("Utilisation des fiches démo")
     return jsonify(FICHES_DEMO), 200
 
 @app.route('/api/gmb/fiches/<fiche_id>', methods=['GET'])
