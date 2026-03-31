@@ -1,28 +1,14 @@
 import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { GmbService, Avis } from '../../services/gmb.service';
 
 @Component({
   selector: 'app-avis',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule],
   template: `
-    <div class="min-h-screen bg-gray-50">
-      <!-- Header -->
-      <header class="bg-white shadow">
-        <div class="max-w-3xl mx-auto px-4 py-6 flex justify-between items-center">
-          <h1 class="text-3xl font-bold text-gray-900">Avis Clients</h1>
-          <button
-            [routerLink]="['/dashboard']"
-            class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded transition"
-          >
-            Retour
-          </button>
-        </div>
-      </header>
-
       <!-- Main Content -->
       <main class="max-w-3xl mx-auto px-4 py-8">
         <div *ngIf="isLoading()" class="text-center py-12">
@@ -99,7 +85,6 @@ import { GmbService, Avis } from '../../services/gmb.service';
           </div>
         </div>
       </main>
-    </div>
   `
 })
 export class AvisComponent implements OnInit {

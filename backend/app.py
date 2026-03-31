@@ -11,7 +11,10 @@ from functools import wraps
 import requests
 from sqlalchemy import text
 from services.gmb_service import get_fiches_by_user, calculer_score
-from models import db, User, Fiche, Avis, Publication
+from models import db, User, Fiche, Avis, Publication, Notification, Photo
+from routes.stats import stats_bp
+from routes.notifications import notifications_bp, generate_notifications
+from routes.photos import photos_bp
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -59,6 +62,11 @@ CORS(app, resources={
         "allow_headers": ["Content-Type"]
     }
 })
+
+# Register blueprints
+app.register_blueprint(stats_bp, url_prefix='/api/stats')
+app.register_blueprint(notifications_bp, url_prefix='/api/notifications')
+app.register_blueprint(photos_bp, url_prefix='/api/photos')
 
 # Demo data - Fiches (fallback if database is empty)
 FICHES_DEMO = [
@@ -233,10 +241,71 @@ def auth_callback():
                 google_access_token=access_token
             )
             db.session.add(user)
+            db.session.commit()
+
+            # Create demo fiches for new user
+            logger.info(f"Creating demo fiches for {email}")
+            demo_fiches_data = [
+                {
+                    "nom": "Boulangerie Martin",
+                    "categorie": "Boulangerie",
+                    "adresse": "12 Rue de la Paix, Rouvroy 62320",
+                    "telephone": "03 21 00 00 01",
+                    "site_web": "",
+                    "horaires": "",
+                    "description": "",
+                    "score": 30
+                },
+                {
+                    "nom": "Karact'Hair",
+                    "categorie": "Coiffeur",
+                    "adresse": "5 Rue du Commerce, Rouvroy 62320",
+                    "telephone": "03 21 00 00 02",
+                    "site_web": "https://karacthair.fr",
+                    "horaires": "Lun-Sam 9h-19h",
+                    "description": "Salon de coiffure mixte",
+                    "score": 70
+                },
+                {
+                    "nom": "Friterie Aux Bonnes Saveurs",
+                    "categorie": "Restauration rapide",
+                    "adresse": "8 Avenue de la Liberté, Rouvroy 62320",
+                    "telephone": "03 21 00 00 03",
+                    "site_web": "",
+                    "horaires": "",
+                    "description": "",
+                    "score": 30
+                },
+                {
+                    "nom": "MS Automobiles",
+                    "categorie": "Garage automobile",
+                    "adresse": "22 Rue Nationale, Rouvroy 62320",
+                    "telephone": "03 21 00 00 04",
+                    "site_web": "",
+                    "horaires": "",
+                    "description": "",
+                    "score": 30
+                }
+            ]
+
+            for fiche_data in demo_fiches_data:
+                fiche = Fiche(
+                    user_id=user.id,
+                    nom=fiche_data["nom"],
+                    categorie=fiche_data["categorie"],
+                    adresse=fiche_data["adresse"],
+                    telephone=fiche_data["telephone"],
+                    site_web=fiche_data["site_web"],
+                    horaires=fiche_data["horaires"],
+                    description=fiche_data["description"],
+                    score=fiche_data["score"]
+                )
+                db.session.add(fiche)
+            db.session.commit()
         else:
             logger.info(f"Updating existing user: {email}")
             user.google_access_token = access_token
-        db.session.commit()
+            db.session.commit()
 
         # Générer JWT
         jwt_token = jwt.encode({
@@ -278,9 +347,18 @@ def get_fiches():
     1. Essaie Google Business Profile API (vraies données)
     2. Si Google échoue → cherche en BDD
     3. Si BDD vide → retourne FICHES_DEMO
+    Génère aussi les notifications manquantes.
     """
     google_access_token = request.user.get('google_access_token')
     user_id = request.user.get('user_id')
+
+    # Récupère l'utilisateur dans la BDD pour générer les notifications
+    user = User.query.filter_by(google_id=user_id).first()
+    if user:
+        try:
+            generate_notifications(user.id)
+        except Exception as e:
+            logger.warning(f"Erreur lors de la génération des notifications: {e}")
 
     # Étape 1: Tenter de récupérer les vraies fiches Google Business Profile
     if google_access_token:
@@ -604,12 +682,7 @@ def create_tables():
 
 if __name__ == '__main__':
     with app.app_context():
-        # TEMPORARY: Force reset to apply schema changes (user_id auto-increment, google_id column)
-        # Remove this block after schema migration is complete
-        logger.warning("⚠️  TEMPORARY: Dropping all tables to apply schema migration...")
-        db.drop_all()
-        logger.info("✓ Database tables dropped")
-
+        # Create tables if they don't exist (migration complete, no need to drop)
         db.create_all()
-        logger.info("✓ Database tables recreated with new schema")
+        logger.info("✓ Database tables ready")
     app.run(debug=True, host='0.0.0.0', port=5000)
