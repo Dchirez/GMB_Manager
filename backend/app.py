@@ -336,6 +336,24 @@ def auth_me():
         'name': request.user.get('name')
     }), 200
 
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """
+    Vérification de santé du backend + création des tables manquantes
+    """
+    try:
+        db.create_all()
+        return jsonify({
+            'status': 'ok',
+            'message': 'Backend healthy, all tables created'
+        }), 200
+    except Exception as e:
+        logger.error(f"Health check error: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
 @app.route('/api/seed-demo-fiches', methods=['POST'])
 @token_required
 def seed_demo_fiches():
