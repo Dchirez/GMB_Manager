@@ -68,6 +68,11 @@ app.register_blueprint(stats_bp, url_prefix='/api/stats')
 app.register_blueprint(notifications_bp, url_prefix='/api/notifications')
 app.register_blueprint(photos_bp, url_prefix='/api/photos')
 
+# Health check endpoint
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({'status': 'ok', 'message': 'Backend is running'})
+
 # Demo data - Fiches (fallback if database is empty)
 FICHES_DEMO = [
     {
