@@ -441,7 +441,7 @@ def get_fiches():
     user_id = request.user.get('user_id')
 
     # Récupère l'utilisateur dans la BDD pour générer les notifications
-    user = User.query.filter_by(google_id=user_id).first()
+    user = User.query.filter_by(id=user_id).first()
     if user:
         try:
             generate_notifications(user.id)
