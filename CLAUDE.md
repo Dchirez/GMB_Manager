@@ -149,6 +149,32 @@ git push -u origin main
 - PWA (service workers) — structure en place, reste `ng add @angular/pwa` + ngsw-config.json
 
 ## 7. Variables d'environnement requises (.env)
+
+### Production (Render) ✅
+```
+# Google OAuth 2.0
+GOOGLE_CLIENT_ID=<voir .env ou Render dashboard>
+GOOGLE_CLIENT_SECRET=<voir .env ou Render dashboard>
+GOOGLE_REDIRECT_URI=https://gmb-backend.dchirez.fr/auth/callback
+
+# Flask Configuration
+FRONTEND_URL=https://gmb.dchirez.fr
+SECRET_KEY=gmb-manager-super-secret-key-2026
+FLASK_ENV=production
+
+# Database Configuration (PostgreSQL/Supabase)
+DATABASE_URL=<voir .env ou Render dashboard>
+RESET_DB=false
+
+# Supabase (for photo storage)
+SUPABASE_URL=<voir .env ou Render dashboard>
+SUPABASE_SERVICE_KEY=<voir .env ou Render dashboard>
+```
+
+**Note:** Toutes les variables d'environnement sont configurées dans Render dashboard.
+Pour dev local, voir le fichier `.env` (voir `.env.example` pour la structure).
+
+### Développement local
 ```
 # Google OAuth 2.0
 GOOGLE_CLIENT_ID=xxx.apps.googleusercontent.com
@@ -237,30 +263,57 @@ Utilisation des fiches démo
 
 3. Vérifier les réponses API avec les logs Flask (lancement avec DEBUG=1)
 
-## 10. Prochaines étapes prioritaires
-1. **Tester localement les nouvelles fonctionnalités** :
-   - Backend: `python app.py` — verify routes /api/stats, /api/notifications, /api/photos
-   - Frontend: `ng serve` — test notifications polling, upload photo, stats charts
-   - Tester responsive: desktop/tablet/mobile avec devtools
+## 10. Déploiement en production ✅
 
-2. **Configurer Supabase Storage** (optionnel, pour la galerie) :
-   - Créer bucket `gmb-photos` public dans Supabase
-   - Ajouter SUPABASE_URL et SUPABASE_SERVICE_KEY dans .env
-   - Tester upload photo
+### Statut (mars 2026)
+- **Frontend:** https://gmb.dchirez.fr ✅ (déployé sur Render)
+- **Backend:** https://gmb-backend.dchirez.fr ✅ (déployé sur Render)
+- **Authentification Google:** Configurée et testée ✅
+- **Route /health:** Ajoutée pour monitoring ✅
 
-3. **Déployer sur Render + Vercel** :
-   - Backend: `git push` → Render auto-deploy
-   - Config env vars Render: GOOGLE_CLIENT_*, DATABASE_URL, SUPABASE_*, FLASK_ENV=production
-   - Frontend: `ng build --configuration=production` → déployer sur Vercel
-   - Tester flux complet en production (OAuth, notifications, photos)
+### Étapes complétées:
+1. **Mise à jour des domaines** :
+   - `environment.ts` et `environment.prod.ts` pointent vers `gmb-backend.dchirez.fr`
+   - `GOOGLE_REDIRECT_URI` mis à jour dans Google Cloud Console
+   - `FRONTEND_URL` et `GOOGLE_REDIRECT_URI` configurés dans `.env` et Render
 
-4. **PWA (optionnel, structure prête)** :
+2. **Configuration Google OAuth Console** :
+   - Authorized redirect URIs: `https://gmb-backend.dchirez.fr/auth/callback`
+   - Authorized JavaScript origins: `https://gmb.dchirez.fr`
+
+3. **Déploiement Render** :
+   - Backend: auto-deploy via git push sur `main`
+   - Frontend: auto-deploy via git push sur `main`
+   - Variables d'environnement configurées sur Render dashboard
+
+4. **Health check** :
+   - Route `GET /health` ajoutée au backend
+   - Endpoint accessible pour monitoring: `https://gmb-backend.dchirez.fr/health`
+
+5. **Tests en production** :
+   - Authentification Google fonctionnelle ✅
+   - Flux complet: login → dashboard → fiches ✅
+   - CORS configuré correctement ✅
+
+## 11. Prochaines étapes prioritaires
+1. **Configurer Supabase Storage** (optionnel, pour la galerie) :
+   - Bucket `gmb-photos` déjà créé dans Supabase
+   - SUPABASE_URL et SUPABASE_SERVICE_KEY configurés
+   - Tester upload photo en production
+
+2. **PWA (optionnel, structure prête)** :
    - `ng add @angular/pwa`
    - Configurer ngsw-config.json pour cache stratégies
    - Tester sur mobile: "Ajouter à l'écran d'accueil"
 
-5. **Futures améliorations** :
-   - Synchronisation éditions avec Google Business Profile API (PUT /gmb/fiches/:id → API Google)
+3. **Monitoring & Logs** :
+   - Configurer alertes Render pour redéploiements/erreurs
+   - Vérifier les logs Render régulièrement
+   - Mettre en place un dashboard de monitoring
+
+4. **Futures améliorations** :
+   - Synchronisation éditions avec l'API Google Business Profile (PUT /gmb/fiches/:id → API Google)
    - Avis & publications temps réel via API Google
    - GraphQL pour requêtes complexes
    - Tests unitaires (Jest/Karma)
+   - CI/CD avec GitHub Actions
