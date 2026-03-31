@@ -336,6 +336,94 @@ def auth_me():
         'name': request.user.get('name')
     }), 200
 
+@app.route('/api/seed-demo-fiches', methods=['POST'])
+@token_required
+def seed_demo_fiches():
+    """
+    Crée les 4 fiches démo pour l'utilisateur actuel
+    Utile quand la création auto lors de l'inscription ne fonctionne pas
+    """
+    try:
+        user_id = request.user.get('user_id')
+
+        # Récupère l'utilisateur
+        user = User.query.filter_by(id=user_id).first()
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        # Vérifie si des fiches existent déjà
+        existing = Fiche.query.filter_by(user_id=user.id).first()
+        if existing:
+            return jsonify({'message': 'Fiches already exist for this user'}), 200
+
+        # Crée les 4 fiches démo
+        demo_fiches_data = [
+            {
+                "nom": "Boulangerie Martin",
+                "categorie": "Boulangerie",
+                "adresse": "12 Rue de la Paix, Rouvroy 62320",
+                "telephone": "03 21 00 00 01",
+                "site_web": "",
+                "horaires": "",
+                "description": "",
+                "score": 30
+            },
+            {
+                "nom": "Karact'Hair",
+                "categorie": "Coiffeur",
+                "adresse": "5 Rue du Commerce, Rouvroy 62320",
+                "telephone": "03 21 00 00 02",
+                "site_web": "https://karacthair.fr",
+                "horaires": "Lun-Sam 9h-19h",
+                "description": "Salon de coiffure mixte",
+                "score": 70
+            },
+            {
+                "nom": "Friterie Aux Bonnes Saveurs",
+                "categorie": "Restauration rapide",
+                "adresse": "8 Avenue de la Liberté, Rouvroy 62320",
+                "telephone": "03 21 00 00 03",
+                "site_web": "",
+                "horaires": "",
+                "description": "",
+                "score": 30
+            },
+            {
+                "nom": "MS Automobiles",
+                "categorie": "Garage automobile",
+                "adresse": "22 Rue Nationale, Rouvroy 62320",
+                "telephone": "03 21 00 00 04",
+                "site_web": "",
+                "horaires": "",
+                "description": "",
+                "score": 30
+            }
+        ]
+
+        for fiche_data in demo_fiches_data:
+            fiche = Fiche(
+                user_id=user.id,
+                nom=fiche_data["nom"],
+                categorie=fiche_data["categorie"],
+                adresse=fiche_data["adresse"],
+                telephone=fiche_data["telephone"],
+                site_web=fiche_data["site_web"],
+                horaires=fiche_data["horaires"],
+                description=fiche_data["description"],
+                score=fiche_data["score"]
+            )
+            db.session.add(fiche)
+
+        db.session.commit()
+        logger.info(f"Created 4 demo fiches for user {user.email}")
+
+        return jsonify({'message': '4 demo fiches created successfully'}), 201
+
+    except Exception as e:
+        logger.error(f"Error creating demo fiches: {e}")
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
 # ==================== GMB ROUTES ====================
 
 @app.route('/api/gmb/fiches', methods=['GET'])
