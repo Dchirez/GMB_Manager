@@ -87,10 +87,14 @@ gérer les avis clients et créer des publications.
 4. **Galerie photos** :
    - Composant photos sous onglet dans /fiche/:id
    - Upload multipart/form-data vers Supabase Storage (bucket gmb-photos)
+   - Modale de commentaire/caption à l'upload (optionnel)
+   - Caption affiché en overlay sur la photo dans la galerie
    - Grille responsive: 1 col mobile, 2 tablette, 3 desktop
    - Lightbox avec navigation précédent/suivant
    - Delete avec confirmation
    - Loader + feedback succès/erreur
+   - Création auto des fiches démo en BDD pour les utilisateurs existants (fix "Fiche not found")
+   - Headers Supabase corrigés (apikey + Authorization avec service_role key)
 
 ### Mode démo avec 4 vrais commerces de Rouvroy
 - Boulangerie Martin (score: 30/100)
@@ -296,10 +300,11 @@ Utilisation des fiches démo
    - CORS configuré correctement ✅
 
 ## 11. Prochaines étapes prioritaires
-1. **Configurer Supabase Storage** (optionnel, pour la galerie) :
-   - Bucket `gmb-photos` déjà créé dans Supabase
-   - SUPABASE_URL et SUPABASE_SERVICE_KEY configurés
-   - Tester upload photo en production
+1. **Supabase Storage (galerie photos)** ✅ :
+   - Bucket `gmb-photos` créé dans Supabase
+   - SUPABASE_URL et SUPABASE_SERVICE_KEY (service_role) configurés dans Render
+   - Upload, affichage et suppression de photos fonctionnels en production
+   - Modale de commentaire/caption à l'upload
 
 2. **PWA (optionnel, structure prête)** :
    - `ng add @angular/pwa`

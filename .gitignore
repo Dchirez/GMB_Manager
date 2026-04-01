@@ -36,3 +36,5 @@ Thumbs.db
 # General
 .env.local
 .env.*.local
+GMB_Manager_Recap_Debug.md
+
