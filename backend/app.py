@@ -276,6 +276,69 @@ def auth_callback():
             user.google_access_token = access_token
             db.session.commit()
 
+            # Créer les fiches démo si l'utilisateur n'en a aucune en BDD
+            existing_fiches = Fiche.query.filter_by(user_id=user.id).first()
+            if not existing_fiches:
+                logger.info(f"Creating demo fiches for existing user {email} (none found in DB)")
+                demo_fiches_data = [
+                    {
+                        "nom": "Boulangerie Martin",
+                        "categorie": "Boulangerie",
+                        "adresse": "12 Rue de la Paix, Rouvroy 62320",
+                        "telephone": "03 21 00 00 01",
+                        "site_web": "",
+                        "horaires": "",
+                        "description": "",
+                        "score": 30
+                    },
+                    {
+                        "nom": "Karact'Hair",
+                        "categorie": "Coiffeur",
+                        "adresse": "5 Rue du Commerce, Rouvroy 62320",
+                        "telephone": "03 21 00 00 02",
+                        "site_web": "https://karacthair.fr",
+                        "horaires": "Lun-Sam 9h-19h",
+                        "description": "Salon de coiffure mixte",
+                        "score": 70
+                    },
+                    {
+                        "nom": "Friterie Aux Bonnes Saveurs",
+                        "categorie": "Restauration rapide",
+                        "adresse": "8 Avenue de la Liberté, Rouvroy 62320",
+                        "telephone": "03 21 00 00 03",
+                        "site_web": "",
+                        "horaires": "",
+                        "description": "",
+                        "score": 30
+                    },
+                    {
+                        "nom": "MS Automobiles",
+                        "categorie": "Garage automobile",
+                        "adresse": "22 Rue Nationale, Rouvroy 62320",
+                        "telephone": "03 21 00 00 04",
+                        "site_web": "",
+                        "horaires": "",
+                        "description": "",
+                        "score": 30
+                    }
+                ]
+
+                for fiche_data in demo_fiches_data:
+                    fiche = Fiche(
+                        user_id=user.id,
+                        nom=fiche_data["nom"],
+                        categorie=fiche_data["categorie"],
+                        adresse=fiche_data["adresse"],
+                        telephone=fiche_data["telephone"],
+                        site_web=fiche_data["site_web"],
+                        horaires=fiche_data["horaires"],
+                        description=fiche_data["description"],
+                        score=fiche_data["score"]
+                    )
+                    db.session.add(fiche)
+                db.session.commit()
+                logger.info(f"Created 4 demo fiches for existing user {email}")
+
         # Générer JWT
         jwt_token = jwt.encode({
             'user_id': user.id,
