@@ -89,6 +89,7 @@ def upload_photo(fiche_id):
         # Upload vers Supabase Storage
         headers = {
             'Authorization': f'Bearer {supabase_key}',
+            'apikey': supabase_key,
             'Content-Type': file.content_type
         }
 
@@ -96,16 +97,19 @@ def upload_photo(fiche_id):
 
         logger.info(f"Uploading file to Supabase: {unique_filename}")
 
+        file_data = file.read()
+        logger.info(f"File size: {len(file_data)} bytes, Content-Type: {file.content_type}")
+
         response = requests.post(
             supabase_endpoint,
             headers=headers,
-            data=file.read(),
+            data=file_data,
             timeout=30
         )
 
         if response.status_code not in [200, 201]:
             logger.error(f"Supabase upload error: {response.status_code} - {response.text}")
-            return jsonify({'error': 'Upload failed'}), 500
+            return jsonify({'error': f'Upload failed: {response.text}'}), 500
 
         # Construire l'URL publique
         public_url = f"{supabase_url}/storage/v1/object/public/gmb-photos/{unique_filename}"
