@@ -1,11 +1,12 @@
 import { Component, OnInit, inject, input, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { GmbService, Photo } from '../../services/gmb.service';
 
 @Component({
   selector: 'app-photos',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   template: `
     <div class="p-6 space-y-6">
       <div class="flex justify-between items-center">
@@ -82,6 +83,41 @@ import { GmbService, Photo } from '../../services/gmb.service';
         </div>
       </div>
 
+      <!-- Caption Modal -->
+      <div
+        *ngIf="pendingFile()"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+      >
+        <div class="bg-white rounded-xl shadow-xl p-6 w-full max-w-md mx-4" (click)="$event.stopPropagation()">
+          <h3 class="text-lg font-semibold text-gray-900 mb-4">Ajouter un commentaire</h3>
+
+          <div class="mb-4">
+            <p class="text-sm text-gray-500 mb-2">Fichier : {{ pendingFile()?.name }}</p>
+            <textarea
+              [(ngModel)]="captionText"
+              placeholder="Décrivez cette photo (optionnel)..."
+              rows="3"
+              class="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
+            ></textarea>
+          </div>
+
+          <div class="flex gap-3 justify-end">
+            <button
+              (click)="cancelUpload()"
+              class="px-4 py-2 text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+            >
+              Annuler
+            </button>
+            <button
+              (click)="confirmUpload()"
+              class="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition"
+            >
+              Envoyer
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Lightbox -->
       <div
         *ngIf="lightboxPhoto()"
@@ -148,6 +184,8 @@ export class PhotosComponent implements OnInit {
   uploadError = signal<string>('');
   lightboxPhoto = signal<Photo | null>(null);
   allPhotos = signal<Photo[]>([]);
+  pendingFile = signal<File | null>(null);
+  captionText = '';
 
   ngOnInit() {
     this.loadPhotos();
@@ -177,18 +215,34 @@ export class PhotosComponent implements OnInit {
       return;
     }
 
+    // Ouvrir la modale pour ajouter un commentaire
+    this.captionText = '';
+    this.pendingFile.set(file);
+    input.value = '';
+  }
+
+  cancelUpload() {
+    this.pendingFile.set(null);
+    this.captionText = '';
+  }
+
+  confirmUpload() {
+    const file = this.pendingFile();
+    if (!file) return;
+
+    const caption = this.captionText.trim();
+    this.pendingFile.set(null);
+
     this.uploading.set(true);
     this.uploadSuccess.set(false);
     this.uploadError.set('');
 
-    this.gmbService.uploadPhoto(this.ficheId(), file).subscribe({
+    this.gmbService.uploadPhoto(this.ficheId(), file, caption || undefined).subscribe({
       next: (photo) => {
         this.uploading.set(false);
         this.uploadSuccess.set(true);
         this.allPhotos.update(photos => [photo, ...photos]);
         setTimeout(() => this.uploadSuccess.set(false), 3000);
-        // Reset input
-        input.value = '';
       },
       error: (err) => {
         this.uploading.set(false);
@@ -196,6 +250,8 @@ export class PhotosComponent implements OnInit {
         setTimeout(() => this.uploadError.set(''), 5000);
       }
     });
+
+    this.captionText = '';
   }
 
   deletePhoto(photo: Photo, event: Event) {
