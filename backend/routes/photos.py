@@ -52,7 +52,7 @@ def get_photos(fiche_id):
         user_id = request.user.get('user_id')
 
         # Vérifier que la fiche appartient à l'utilisateur
-        user = User.query.filter_by(google_id=user_id).first()
+        user = User.query.filter_by(id=user_id).first()
         if not user:
             return jsonify({'error': 'User not found'}), 404
 
@@ -80,7 +80,7 @@ def upload_photo(fiche_id):
         user_id = request.user.get('user_id')
 
         # Vérifier que la fiche appartient à l'utilisateur
-        user = User.query.filter_by(google_id=user_id).first()
+        user = User.query.filter_by(id=user_id).first()
         if not user:
             return jsonify({'error': 'User not found'}), 404
 
@@ -169,7 +169,7 @@ def delete_photo(fiche_id, photo_id):
         user_id = request.user.get('user_id')
 
         # Vérifier que la fiche appartient à l'utilisateur
-        user = User.query.filter_by(google_id=user_id).first()
+        user = User.query.filter_by(id=user_id).first()
         if not user:
             return jsonify({'error': 'User not found'}), 404
 

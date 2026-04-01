@@ -140,7 +140,7 @@ def get_notifications():
         user_id = request.user.get('user_id')
 
         # Récupère l'utilisateur dans la BDD
-        user = User.query.filter_by(google_id=user_id).first()
+        user = User.query.filter_by(id=user_id).first()
         if not user:
             return jsonify({'error': 'User not found'}), 404
 
@@ -166,7 +166,7 @@ def mark_notification_read(notif_id):
     try:
         user_id = request.user.get('user_id')
 
-        user = User.query.filter_by(google_id=user_id).first()
+        user = User.query.filter_by(id=user_id).first()
         if not user:
             return jsonify({'error': 'User not found'}), 404
 
@@ -192,7 +192,7 @@ def mark_all_notifications_read():
     try:
         user_id = request.user.get('user_id')
 
-        user = User.query.filter_by(google_id=user_id).first()
+        user = User.query.filter_by(id=user_id).first()
         if not user:
             return jsonify({'error': 'User not found'}), 404
 

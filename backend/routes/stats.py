@@ -136,7 +136,7 @@ def get_dashboard_stats():
         user_id = request.user.get('user_id')
 
         # Récupère l'utilisateur dans la BDD pour son ID numérique
-        user = User.query.filter_by(google_id=user_id).first()
+        user = User.query.filter_by(id=user_id).first()
         if not user:
             return jsonify({'error': 'User not found'}), 404
 
