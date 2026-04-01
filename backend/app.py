@@ -71,7 +71,7 @@ app.register_blueprint(photos_bp, url_prefix='/api/photos')
 # Health check endpoint
 @app.route('/health', methods=['GET'])
 def health():
-    return jsonify({'status': 'ok', 'message': 'Backend is running'})
+    return jsonify({'status': 'ok', 'message': 'Backend is running', 'version': '1.1'})
 
 # Demo data - Fiches (fallback if database is empty)
 FICHES_DEMO = [
