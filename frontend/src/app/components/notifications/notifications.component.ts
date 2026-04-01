@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, inject, signal } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, signal, ElementRef, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { GmbService, Notification } from '../../services/gmb.service';
@@ -43,7 +43,7 @@ import { GmbService, Notification } from '../../services/gmb.service';
             <h3 class="font-semibold text-gray-900">Notifications</h3>
             <button
               *ngIf="unreadCount() > 0"
-              (click)="markAllAsRead()"
+              (click)="markAllAsRead($event)"
               class="text-sm text-indigo-600 hover:text-indigo-700"
             >
               Tout marquer comme lu
@@ -86,12 +86,20 @@ import { GmbService, Notification } from '../../services/gmb.service';
 export class NotificationsComponent implements OnInit, OnDestroy {
   private gmbService = inject(GmbService);
   private router = inject(Router);
+  private elementRef = inject(ElementRef);
 
   notifications = signal<Notification[]>([]);
   panelOpen = signal(false);
   unreadCount = () => this.notifications().filter(n => !n.lu).length;
 
   private pollInterval: any;
+
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: Event) {
+    if (this.panelOpen() && !this.elementRef.nativeElement.contains(event.target)) {
+      this.panelOpen.set(false);
+    }
+  }
 
   ngOnInit() {
     this.loadNotifications();
@@ -132,10 +140,11 @@ export class NotificationsComponent implements OnInit, OnDestroy {
     });
   }
 
-  markAllAsRead() {
+  markAllAsRead(event: Event) {
+    event.stopPropagation();
     this.gmbService.markAllNotificationsAsRead().subscribe({
       next: () => {
-        this.loadNotifications();
+        this.notifications.set([]);
       },
       error: (err) => {
         console.error('Erreur marking all as read:', err);
