@@ -96,12 +96,20 @@ gérer les avis clients et créer des publications.
    - Création auto des fiches démo en BDD pour les utilisateurs existants (fix "Fiche not found")
    - Headers Supabase corrigés (apikey + Authorization avec service_role key)
 
+5. **Seed avis démo en BDD** (avril 2026) :
+   - Fonction helper `create_demo_fiches_and_avis()` dans app.py
+   - Crée fiches ET avis associés en BDD (IDs cohérents)
+   - Auto-seed dans `GET /api/avis/fiches/:id/avis` : si fiche existe en BDD sans avis, les avis démo sont créés à la volée
+   - Fix: les avis démo utilisaient des clés hardcodées "1"-"4" qui ne matchaient pas les IDs auto-générés en BDD
+   - Données démo centralisées dans `DEMO_FICHES_DATA` et `DEMO_AVIS_BY_FICHE_NAME` (plus de duplication)
+
 ### Mode démo avec 4 vrais commerces de Rouvroy
 - Boulangerie Martin (score: 30/100)
 - Karact'Hair (score: 70/100)
 - Friterie Aux Bonnes Saveurs (score: 30/100)
 - MS Automobiles (score: 30/100)
 - Accessible si pas de vraies fiches GMB disponibles
+- Chaque fiche inclut des avis démo seedés en BDD
 
 ## 5. Lier le dépôt distant et pousser
 ```bash

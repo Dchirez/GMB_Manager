@@ -23,6 +23,108 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
+# ==================== DEMO DATA SEEDING HELPER ====================
+
+DEMO_FICHES_DATA = [
+    {
+        "nom": "Boulangerie Martin",
+        "categorie": "Boulangerie",
+        "adresse": "12 Rue de la Paix, Rouvroy 62320",
+        "telephone": "03 21 00 00 01",
+        "site_web": "",
+        "horaires": "",
+        "description": "",
+        "score": 30
+    },
+    {
+        "nom": "Karact'Hair",
+        "categorie": "Coiffeur",
+        "adresse": "5 Rue du Commerce, Rouvroy 62320",
+        "telephone": "03 21 00 00 02",
+        "site_web": "https://karacthair.fr",
+        "horaires": "Lun-Sam 9h-19h",
+        "description": "Salon de coiffure mixte",
+        "score": 70
+    },
+    {
+        "nom": "Friterie Aux Bonnes Saveurs",
+        "categorie": "Restauration rapide",
+        "adresse": "8 Avenue de la Liberté, Rouvroy 62320",
+        "telephone": "03 21 00 00 03",
+        "site_web": "",
+        "horaires": "",
+        "description": "",
+        "score": 30
+    },
+    {
+        "nom": "MS Automobiles",
+        "categorie": "Garage automobile",
+        "adresse": "22 Rue Nationale, Rouvroy 62320",
+        "telephone": "03 21 00 00 04",
+        "site_web": "",
+        "horaires": "",
+        "description": "",
+        "score": 30
+    }
+]
+
+# Avis démo indexés par nom de fiche (pour matcher après création en BDD)
+DEMO_AVIS_BY_FICHE_NAME = {
+    "Boulangerie Martin": [
+        {"auteur": "Marie D.", "note": 5, "date": "2024-12-01", "commentaire": "Excellent pain, toujours frais !", "reponse": None},
+        {"auteur": "Jean P.", "note": 4, "date": "2024-11-15", "commentaire": "Bonnes viennoiseries mais parfois en rupture.", "reponse": None},
+        {"auteur": "Sophie L.", "note": 3, "date": "2024-10-20", "commentaire": "Service un peu lent le matin.", "reponse": None}
+    ],
+    "Karact'Hair": [
+        {"auteur": "Claire M.", "note": 5, "date": "2024-12-10", "commentaire": "Super coiffeur, résultat impeccable !", "reponse": "Merci Claire, à bientôt !"},
+        {"auteur": "Lucas B.", "note": 4, "date": "2024-11-28", "commentaire": "Bon accueil, tarifs raisonnables.", "reponse": None}
+    ],
+    "Friterie Aux Bonnes Saveurs": [
+        {"auteur": "Thomas R.", "note": 5, "date": "2024-12-05", "commentaire": "Les meilleures frites du coin !", "reponse": None},
+        {"auteur": "Emma V.", "note": 2, "date": "2024-10-01", "commentaire": "Attente trop longue.", "reponse": None}
+    ],
+    "MS Automobiles": [
+        {"auteur": "Pierre N.", "note": 4, "date": "2024-11-10", "commentaire": "Travail soigné, prix honnêtes.", "reponse": None}
+    ]
+}
+
+
+def create_demo_fiches_and_avis(user_id):
+    """Crée les fiches démo ET leurs avis associés pour un utilisateur"""
+    from datetime import date
+    import uuid
+
+    for fiche_data in DEMO_FICHES_DATA:
+        fiche = Fiche(
+            user_id=user_id,
+            nom=fiche_data["nom"],
+            categorie=fiche_data["categorie"],
+            adresse=fiche_data["adresse"],
+            telephone=fiche_data["telephone"],
+            site_web=fiche_data["site_web"],
+            horaires=fiche_data["horaires"],
+            description=fiche_data["description"],
+            score=fiche_data["score"]
+        )
+        db.session.add(fiche)
+        db.session.flush()  # Pour obtenir l'ID généré
+
+        # Créer les avis démo pour cette fiche
+        avis_list = DEMO_AVIS_BY_FICHE_NAME.get(fiche_data["nom"], [])
+        for avis_data in avis_list:
+            avis = Avis(
+                id=str(uuid.uuid4())[:8],
+                fiche_id=fiche.id,
+                auteur=avis_data["auteur"],
+                note=avis_data["note"],
+                date=date.fromisoformat(avis_data["date"]),
+                commentaire=avis_data["commentaire"],
+                reponse=avis_data["reponse"]
+            )
+            db.session.add(avis)
+
+    db.session.commit()
+
 # Set OAuth insecure transport flag for development only
 if os.getenv('FLASK_ENV') == 'development':
     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
@@ -212,132 +314,20 @@ def auth_callback():
             db.session.add(user)
             db.session.commit()
 
-            # Create demo fiches for new user
-            logger.info(f"Creating demo fiches for {email}")
-            demo_fiches_data = [
-                {
-                    "nom": "Boulangerie Martin",
-                    "categorie": "Boulangerie",
-                    "adresse": "12 Rue de la Paix, Rouvroy 62320",
-                    "telephone": "03 21 00 00 01",
-                    "site_web": "",
-                    "horaires": "",
-                    "description": "",
-                    "score": 30
-                },
-                {
-                    "nom": "Karact'Hair",
-                    "categorie": "Coiffeur",
-                    "adresse": "5 Rue du Commerce, Rouvroy 62320",
-                    "telephone": "03 21 00 00 02",
-                    "site_web": "https://karacthair.fr",
-                    "horaires": "Lun-Sam 9h-19h",
-                    "description": "Salon de coiffure mixte",
-                    "score": 70
-                },
-                {
-                    "nom": "Friterie Aux Bonnes Saveurs",
-                    "categorie": "Restauration rapide",
-                    "adresse": "8 Avenue de la Liberté, Rouvroy 62320",
-                    "telephone": "03 21 00 00 03",
-                    "site_web": "",
-                    "horaires": "",
-                    "description": "",
-                    "score": 30
-                },
-                {
-                    "nom": "MS Automobiles",
-                    "categorie": "Garage automobile",
-                    "adresse": "22 Rue Nationale, Rouvroy 62320",
-                    "telephone": "03 21 00 00 04",
-                    "site_web": "",
-                    "horaires": "",
-                    "description": "",
-                    "score": 30
-                }
-            ]
-
-            for fiche_data in demo_fiches_data:
-                fiche = Fiche(
-                    user_id=user.id,
-                    nom=fiche_data["nom"],
-                    categorie=fiche_data["categorie"],
-                    adresse=fiche_data["adresse"],
-                    telephone=fiche_data["telephone"],
-                    site_web=fiche_data["site_web"],
-                    horaires=fiche_data["horaires"],
-                    description=fiche_data["description"],
-                    score=fiche_data["score"]
-                )
-                db.session.add(fiche)
-            db.session.commit()
+            # Create demo fiches + avis for new user
+            logger.info(f"Creating demo fiches and avis for {email}")
+            create_demo_fiches_and_avis(user.id)
         else:
             logger.info(f"Updating existing user: {email}")
             user.google_access_token = access_token
             db.session.commit()
 
-            # Créer les fiches démo si l'utilisateur n'en a aucune en BDD
+            # Créer les fiches démo + avis si l'utilisateur n'en a aucune en BDD
             existing_fiches = Fiche.query.filter_by(user_id=user.id).first()
             if not existing_fiches:
-                logger.info(f"Creating demo fiches for existing user {email} (none found in DB)")
-                demo_fiches_data = [
-                    {
-                        "nom": "Boulangerie Martin",
-                        "categorie": "Boulangerie",
-                        "adresse": "12 Rue de la Paix, Rouvroy 62320",
-                        "telephone": "03 21 00 00 01",
-                        "site_web": "",
-                        "horaires": "",
-                        "description": "",
-                        "score": 30
-                    },
-                    {
-                        "nom": "Karact'Hair",
-                        "categorie": "Coiffeur",
-                        "adresse": "5 Rue du Commerce, Rouvroy 62320",
-                        "telephone": "03 21 00 00 02",
-                        "site_web": "https://karacthair.fr",
-                        "horaires": "Lun-Sam 9h-19h",
-                        "description": "Salon de coiffure mixte",
-                        "score": 70
-                    },
-                    {
-                        "nom": "Friterie Aux Bonnes Saveurs",
-                        "categorie": "Restauration rapide",
-                        "adresse": "8 Avenue de la Liberté, Rouvroy 62320",
-                        "telephone": "03 21 00 00 03",
-                        "site_web": "",
-                        "horaires": "",
-                        "description": "",
-                        "score": 30
-                    },
-                    {
-                        "nom": "MS Automobiles",
-                        "categorie": "Garage automobile",
-                        "adresse": "22 Rue Nationale, Rouvroy 62320",
-                        "telephone": "03 21 00 00 04",
-                        "site_web": "",
-                        "horaires": "",
-                        "description": "",
-                        "score": 30
-                    }
-                ]
-
-                for fiche_data in demo_fiches_data:
-                    fiche = Fiche(
-                        user_id=user.id,
-                        nom=fiche_data["nom"],
-                        categorie=fiche_data["categorie"],
-                        adresse=fiche_data["adresse"],
-                        telephone=fiche_data["telephone"],
-                        site_web=fiche_data["site_web"],
-                        horaires=fiche_data["horaires"],
-                        description=fiche_data["description"],
-                        score=fiche_data["score"]
-                    )
-                    db.session.add(fiche)
-                db.session.commit()
-                logger.info(f"Created 4 demo fiches for existing user {email}")
+                logger.info(f"Creating demo fiches and avis for existing user {email} (none found in DB)")
+                create_demo_fiches_and_avis(user.id)
+                logger.info(f"Created 4 demo fiches with avis for existing user {email}")
 
         # Générer JWT
         jwt_token = jwt.encode({
@@ -406,68 +396,10 @@ def seed_demo_fiches():
         if existing:
             return jsonify({'message': 'Fiches already exist for this user'}), 200
 
-        # Crée les 4 fiches démo
-        demo_fiches_data = [
-            {
-                "nom": "Boulangerie Martin",
-                "categorie": "Boulangerie",
-                "adresse": "12 Rue de la Paix, Rouvroy 62320",
-                "telephone": "03 21 00 00 01",
-                "site_web": "",
-                "horaires": "",
-                "description": "",
-                "score": 30
-            },
-            {
-                "nom": "Karact'Hair",
-                "categorie": "Coiffeur",
-                "adresse": "5 Rue du Commerce, Rouvroy 62320",
-                "telephone": "03 21 00 00 02",
-                "site_web": "https://karacthair.fr",
-                "horaires": "Lun-Sam 9h-19h",
-                "description": "Salon de coiffure mixte",
-                "score": 70
-            },
-            {
-                "nom": "Friterie Aux Bonnes Saveurs",
-                "categorie": "Restauration rapide",
-                "adresse": "8 Avenue de la Liberté, Rouvroy 62320",
-                "telephone": "03 21 00 00 03",
-                "site_web": "",
-                "horaires": "",
-                "description": "",
-                "score": 30
-            },
-            {
-                "nom": "MS Automobiles",
-                "categorie": "Garage automobile",
-                "adresse": "22 Rue Nationale, Rouvroy 62320",
-                "telephone": "03 21 00 00 04",
-                "site_web": "",
-                "horaires": "",
-                "description": "",
-                "score": 30
-            }
-        ]
+        create_demo_fiches_and_avis(user.id)
+        logger.info(f"Created 4 demo fiches with avis for user {user.email}")
 
-        for fiche_data in demo_fiches_data:
-            fiche = Fiche(
-                user_id=user.id,
-                nom=fiche_data["nom"],
-                categorie=fiche_data["categorie"],
-                adresse=fiche_data["adresse"],
-                telephone=fiche_data["telephone"],
-                site_web=fiche_data["site_web"],
-                horaires=fiche_data["horaires"],
-                description=fiche_data["description"],
-                score=fiche_data["score"]
-            )
-            db.session.add(fiche)
-
-        db.session.commit()
-        logger.info(f"Created 4 demo fiches for user {user.email}")
-
-        return jsonify({'message': '4 demo fiches created successfully'}), 201
+        return jsonify({'message': '4 demo fiches with avis created successfully'}), 201
 
     except Exception as e:
         logger.error(f"Error creating demo fiches: {e}")
@@ -670,15 +602,39 @@ def debug_gmb_api():
 @token_required
 def get_avis(fiche_id):
     """Retourne la liste des avis pour une fiche"""
+    from datetime import date
+    import uuid as uuid_mod
+
     # Cherche en BDD d'abord
     try:
         avis_list = Avis.query.filter_by(fiche_id=fiche_id).all()
         if avis_list:
             return jsonify([a.to_dict() for a in avis_list]), 200
+
+        # Pas d'avis en BDD — si la fiche existe, seeder les avis démo
+        fiche = Fiche.query.filter_by(id=fiche_id).first()
+        if fiche and fiche.nom in DEMO_AVIS_BY_FICHE_NAME:
+            logger.info(f"Seeding demo avis for fiche '{fiche.nom}' (id={fiche_id})")
+            for avis_data in DEMO_AVIS_BY_FICHE_NAME[fiche.nom]:
+                avis = Avis(
+                    id=str(uuid_mod.uuid4())[:8],
+                    fiche_id=fiche_id,
+                    auteur=avis_data["auteur"],
+                    note=avis_data["note"],
+                    date=date.fromisoformat(avis_data["date"]),
+                    commentaire=avis_data["commentaire"],
+                    reponse=avis_data["reponse"]
+                )
+                db.session.add(avis)
+            db.session.commit()
+
+            avis_list = Avis.query.filter_by(fiche_id=fiche_id).all()
+            return jsonify([a.to_dict() for a in avis_list]), 200
     except Exception as e:
         logger.error(f"Erreur lors de la lecture des avis en BDD: {e}")
+        db.session.rollback()
 
-    # Fallback sur démo
+    # Fallback sur démo (pour fiches non-BDD)
     avis = AVIS_DEMO.get(fiche_id, [])
     return jsonify(avis), 200
 
