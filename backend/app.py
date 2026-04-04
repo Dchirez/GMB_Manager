@@ -806,36 +806,54 @@ def server_error(error):
 
 # ==================== DATABASE INITIALIZATION ====================
 
-def migrate_to_bigint():
-    """Migrate user_id columns from Integer to BigInteger"""
-    try:
-        # Alter users.id to BigInteger
-        db.session.execute(text('ALTER TABLE users ALTER COLUMN id TYPE bigint'))
-        # Alter fiches.user_id to BigInteger
-        db.session.execute(text('ALTER TABLE fiches ALTER COLUMN user_id TYPE bigint'))
-        db.session.commit()
-        logger.info("✓ Migration: user_id columns changed to BigInteger")
-    except Exception as e:
-        logger.warning(f"Migration skipped (already done or table doesn't exist): {e}")
+_migrations_applied = False
 
-def migrate_publications_image():
-    """Add image_url and image_filename columns to publications table"""
+def _column_exists(table, column):
+    """Check if a column exists in a table (PostgreSQL)"""
+    result = db.session.execute(text(
+        "SELECT 1 FROM information_schema.columns WHERE table_name = :table AND column_name = :column"
+    ), {'table': table, 'column': column})
+    return result.fetchone() is not None
+
+def _column_type(table, column):
+    """Get the data type of a column (PostgreSQL)"""
+    result = db.session.execute(text(
+        "SELECT data_type FROM information_schema.columns WHERE table_name = :table AND column_name = :column"
+    ), {'table': table, 'column': column})
+    row = result.fetchone()
+    return row[0] if row else None
+
+def run_migrations():
+    """Run all pending migrations (idempotent, only once per process)"""
+    global _migrations_applied
+    if _migrations_applied:
+        return
+    _migrations_applied = True
+
     try:
-        db.session.execute(text('ALTER TABLE publications ADD COLUMN image_url VARCHAR(500)'))
-        db.session.execute(text('ALTER TABLE publications ADD COLUMN image_filename VARCHAR(255)'))
-        db.session.commit()
-        logger.info("✓ Migration: added image_url and image_filename to publications")
+        # Migration 1: user_id columns to BigInteger
+        if _column_type('users', 'id') != 'bigint':
+            db.session.execute(text('ALTER TABLE users ALTER COLUMN id TYPE bigint'))
+            db.session.execute(text('ALTER TABLE fiches ALTER COLUMN user_id TYPE bigint'))
+            db.session.commit()
+            logger.info("✓ Migration: user_id columns changed to BigInteger")
+
+        # Migration 2: image columns on publications
+        if not _column_exists('publications', 'image_url'):
+            db.session.execute(text('ALTER TABLE publications ADD COLUMN image_url VARCHAR(500)'))
+            db.session.execute(text('ALTER TABLE publications ADD COLUMN image_filename VARCHAR(255)'))
+            db.session.commit()
+            logger.info("✓ Migration: added image_url and image_filename to publications")
+
     except Exception as e:
         db.session.rollback()
-        logger.warning(f"Migration publications image skipped (already done): {e}")
+        logger.warning(f"Migration error: {e}")
 
 @app.before_request
 def create_tables():
     """Create database tables if they don't exist and apply migrations"""
     db.create_all()
-    # Apply migrations on first request (idempotent)
-    migrate_to_bigint()
-    migrate_publications_image()
+    run_migrations()
 
 if __name__ == '__main__':
     with app.app_context():
