@@ -108,7 +108,17 @@ gérer les avis clients et créer des publications.
    - Affichage de l'image dans la liste des publications
    - Service Angular : `createPublication()` envoie FormData si fichier, JSON sinon
 
-6. **Seed avis démo en BDD** (avril 2026) :
+6. **Cache frontend avec TTL** (avril 2026) :
+   - Cache mémoire + sessionStorage dans `gmb.service.ts`
+   - TTL de 5 minutes, stale-while-revalidate (données périmées affichées instantanément + refresh en arrière-plan)
+   - Méthodes cachées : getFiches, getFiche, getAvis, getPublications, getPhotos, getAvisStats, getDashboardStats
+   - Notifications exclues du cache (doivent rester fraîches, polling 60s)
+   - Invalidation intelligente : updateFiche invalide fiche+fiches, postReponse invalide avis+stats, upload/delete photo invalide photos, createPublication invalide publications
+   - `clearCache()` publique appelée au logout (navbar)
+   - Persistance cross-refresh via sessionStorage (préfixe `gmb_cache_`)
+   - Aucune librairie externe (solution vanilla Angular)
+
+7. **Seed avis démo en BDD** (avril 2026) :
    - Fonction helper `create_demo_fiches_and_avis()` dans app.py
    - Crée fiches ET avis associés en BDD (IDs cohérents)
    - Auto-seed dans `GET /api/avis/fiches/:id/avis` : si fiche existe en BDD sans avis, les avis démo sont créés à la volée

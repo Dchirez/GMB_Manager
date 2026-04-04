@@ -2,6 +2,7 @@ import { Component, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
+import { GmbService } from '../../services/gmb.service';
 import { NotificationsComponent } from '../notifications/notifications.component';
 
 @Component({
@@ -38,9 +39,11 @@ import { NotificationsComponent } from '../notifications/notifications.component
 })
 export class NavbarComponent {
   private authService = inject(AuthService);
+  private gmbService = inject(GmbService);
   private router = inject(Router);
 
   logout() {
+    this.gmbService.clearCache();
     this.authService.logout();
     this.router.navigate(['/login']);
   }
