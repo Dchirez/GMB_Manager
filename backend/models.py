@@ -117,6 +117,8 @@ class Publication(db.Model):
     fiche_id = db.Column(db.String(255), db.ForeignKey('fiches.id'), nullable=False)
     titre = db.Column(db.String(255), nullable=False)
     contenu = db.Column(db.Text, nullable=False)
+    image_url = db.Column(db.String(500), nullable=True)
+    image_filename = db.Column(db.String(255), nullable=True)
     date = db.Column(db.Date, nullable=False)
     statut = db.Column(db.String(50), default='publié')  # publié, brouillon, etc
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -126,6 +128,8 @@ class Publication(db.Model):
             'id': self.id,
             'titre': self.titre,
             'contenu': self.contenu,
+            'image_url': self.image_url,
+            'image_filename': self.image_filename,
             'date': self.date.isoformat() if self.date else None,
             'statut': self.statut
         }

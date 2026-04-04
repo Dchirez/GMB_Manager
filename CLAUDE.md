@@ -59,8 +59,9 @@ gérer les avis clients et créer des publications.
   * Note moyenne en haut
   * Réponse inline via textarea + POST /avis/fiches/:id/avis/:avis_id/reponse
 - Page Publications (/publications/:id) :
-  * Liste publications existantes (titre, contenu, date, statut)
-  * Formulaire création + POST /publications/fiches/:id/posts
+  * Liste publications existantes (titre, contenu, photo, date, statut)
+  * Formulaire création avec photo optionnelle + POST /publications/fiches/:id/posts
+  * Preview de la photo avant publication, bouton supprimer la sélection
 - Navbar global avec cloche notifications (polling 60s)
 
 ### Nouvelles Fonctionnalités (mars 2026) ✨
@@ -96,7 +97,18 @@ gérer les avis clients et créer des publications.
    - Création auto des fiches démo en BDD pour les utilisateurs existants (fix "Fiche not found")
    - Headers Supabase corrigés (apikey + Authorization avec service_role key)
 
-5. **Seed avis démo en BDD** (avril 2026) :
+5. **Photos dans les publications** (avril 2026) :
+   - Upload photo optionnel lors de la création d'une publication
+   - Backend : POST multipart/form-data avec champs titre, contenu, file (optionnel)
+   - Upload vers Supabase Storage (bucket gmb-photos, sous-dossier publications/)
+   - Nouveaux champs Publication : `image_url`, `image_filename` (nullable)
+   - Migration auto `migrate_publications_image()` dans app.py
+   - Frontend : bouton "Ajouter une photo" avec preview avant publication
+   - Validation fichier : max 5 Mo, formats png/jpg/jpeg/gif/webp
+   - Affichage de l'image dans la liste des publications
+   - Service Angular : `createPublication()` envoie FormData si fichier, JSON sinon
+
+6. **Seed avis démo en BDD** (avril 2026) :
    - Fonction helper `create_demo_fiches_and_avis()` dans app.py
    - Crée fiches ET avis associés en BDD (IDs cohérents)
    - Auto-seed dans `GET /api/avis/fiches/:id/avis` : si fiche existe en BDD sans avis, les avis démo sont créés à la volée
@@ -154,6 +166,7 @@ git push -u origin main
 - `getPhotos(ficheId)` → `Observable<Photo[]>`
 - `uploadPhoto(ficheId, file, caption?)` → `Observable<Photo>`
 - `deletePhoto(ficheId, photoId)` → `Observable<{message}>`
+- `createPublication(ficheId, titre, contenu, file?)` → `Observable<Publication>` (FormData si file, JSON sinon)
 
 ## 6d. Pas encore implémenté ❌
 - Synchronisation des éditions avec l'API Google Business Profile

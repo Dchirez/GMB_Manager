@@ -41,6 +41,47 @@ import { GmbService, Publication } from '../../services/gmb.service';
               ></textarea>
             </div>
 
+            <!-- Photo Upload -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Photo (optionnel)</label>
+              <input
+                type="file"
+                #fileInput
+                (change)="onFileSelected($event)"
+                accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
+                class="hidden"
+              />
+              <div *ngIf="!selectedFile()" class="flex items-center gap-3">
+                <button
+                  type="button"
+                  (click)="fileInput.click()"
+                  class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2 px-4 rounded-lg border border-gray-300 transition flex items-center gap-2"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  Ajouter une photo
+                </button>
+              </div>
+
+              <!-- Preview -->
+              <div *ngIf="selectedFile()" class="relative">
+                <img
+                  [src]="imagePreview()"
+                  alt="Preview"
+                  class="w-full max-h-48 object-cover rounded-lg border border-gray-300"
+                />
+                <button
+                  type="button"
+                  (click)="removeFile()"
+                  class="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white rounded-full w-8 h-8 flex items-center justify-center text-lg font-bold shadow-md transition"
+                >
+                  &times;
+                </button>
+                <p class="text-sm text-gray-500 mt-1">{{ selectedFile()?.name }}</p>
+              </div>
+            </div>
+
             <button
               type="submit"
               [disabled]="!newTitle || !newContent || isCreating()"
@@ -60,6 +101,12 @@ import { GmbService, Publication } from '../../services/gmb.service';
           <div *ngFor="let pub of publications()" class="bg-white rounded-lg shadow-md p-6">
             <h3 class="text-lg font-bold text-gray-900 mb-2">{{ pub.titre }}</h3>
             <p class="text-sm text-gray-600 mb-3">{{ pub.date }}</p>
+            <img
+              *ngIf="pub.image_url"
+              [src]="pub.image_url"
+              [alt]="pub.titre"
+              class="w-full max-h-64 object-cover rounded-lg mb-3"
+            />
             <p class="text-gray-700 mb-3">{{ pub.contenu }}</p>
             <span class="inline-block bg-green-100 text-green-800 text-xs px-3 py-1 rounded-full">
               {{ pub.statut }}
@@ -73,6 +120,8 @@ export class PublicationsComponent implements OnInit {
   publications = signal<Publication[]>([]);
   isLoading = signal(true);
   isCreating = signal(false);
+  selectedFile = signal<File | null>(null);
+  imagePreview = signal<string | null>(null);
   newTitle = '';
   newContent = '';
   ficheId: string = '';
@@ -104,6 +153,30 @@ export class PublicationsComponent implements OnInit {
     });
   }
 
+  onFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    if (!input.files || input.files.length === 0) return;
+
+    const file = input.files[0];
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Le fichier ne doit pas dépasser 5 Mo');
+      input.value = '';
+      return;
+    }
+
+    this.selectedFile.set(file);
+
+    const reader = new FileReader();
+    reader.onload = () => this.imagePreview.set(reader.result as string);
+    reader.readAsDataURL(file);
+  }
+
+  removeFile(): void {
+    this.selectedFile.set(null);
+    this.imagePreview.set(null);
+  }
+
   createPublication(): void {
     if (!this.newTitle.trim() || !this.newContent.trim()) {
       alert('Veuillez remplir tous les champs');
@@ -111,11 +184,14 @@ export class PublicationsComponent implements OnInit {
     }
 
     this.isCreating.set(true);
-    this.gmbService.createPublication(this.ficheId, this.newTitle, this.newContent).subscribe({
+    const file = this.selectedFile() ?? undefined;
+    this.gmbService.createPublication(this.ficheId, this.newTitle, this.newContent, file).subscribe({
       next: (newPub) => {
-        this.publications.set([...this.publications(), newPub]);
+        this.publications.set([newPub, ...this.publications()]);
         this.newTitle = '';
         this.newContent = '';
+        this.selectedFile.set(null);
+        this.imagePreview.set(null);
         this.isCreating.set(false);
       },
       error: (error) => {

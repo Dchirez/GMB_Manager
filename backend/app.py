@@ -691,18 +691,66 @@ def get_publications(fiche_id):
 @app.route('/api/publications/fiches/<fiche_id>/posts', methods=['POST'])
 @token_required
 def create_publication(fiche_id):
-    """Crée une nouvelle publication"""
-    data = request.get_json()
-    titre = data.get('titre')
-    contenu = data.get('contenu')
+    """Crée une nouvelle publication (avec photo optionnelle via multipart/form-data)"""
+    import uuid
+
+    # Supporte JSON et multipart/form-data
+    if request.content_type and 'multipart/form-data' in request.content_type:
+        titre = request.form.get('titre')
+        contenu = request.form.get('contenu')
+        file = request.files.get('file')
+    else:
+        data = request.get_json()
+        titre = data.get('titre')
+        contenu = data.get('contenu')
+        file = None
 
     if not titre or not contenu:
         return jsonify({'error': 'Titre and contenu are required'}), 400
 
+    # Upload photo vers Supabase si fichier fourni
+    image_url = None
+    image_filename = None
+
+    if file and file.filename:
+        allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+        ext = file.filename.rsplit('.', 1)
+        if len(ext) < 2 or ext[1].lower() not in allowed_extensions:
+            return jsonify({'error': 'File type not allowed'}), 400
+
+        supabase_url = os.getenv('SUPABASE_URL')
+        supabase_key = os.getenv('SUPABASE_SERVICE_KEY')
+
+        if not supabase_url or not supabase_key:
+            return jsonify({'error': 'Storage not configured'}), 500
+
+        file_extension = ext[1].lower()
+        unique_filename = f"publications/{fiche_id}/{uuid.uuid4()}.{file_extension}"
+
+        headers = {
+            'Authorization': f'Bearer {supabase_key}',
+            'apikey': supabase_key,
+            'Content-Type': file.content_type
+        }
+
+        file_data = file.read()
+        response = requests.post(
+            f"{supabase_url}/storage/v1/object/gmb-photos/{unique_filename}",
+            headers=headers,
+            data=file_data,
+            timeout=30
+        )
+
+        if response.status_code not in [200, 201]:
+            logger.error(f"Supabase upload error: {response.status_code} - {response.text}")
+            return jsonify({'error': f'Upload failed: {response.text}'}), 500
+
+        image_url = f"{supabase_url}/storage/v1/object/public/gmb-photos/{unique_filename}"
+        image_filename = file.filename
+        logger.info(f"Publication photo uploaded: {unique_filename}")
+
     # Essaie de créer en BDD
     try:
-        # Génère un nouvel ID
-        import uuid
         pub_id = str(uuid.uuid4())[:8]
 
         publication = Publication(
@@ -710,6 +758,8 @@ def create_publication(fiche_id):
             fiche_id=fiche_id,
             titre=titre,
             contenu=contenu,
+            image_url=image_url,
+            image_filename=image_filename,
             date=datetime.now().date(),
             statut='publié'
         )
@@ -724,7 +774,6 @@ def create_publication(fiche_id):
     if fiche_id not in PUBLICATIONS_DEMO:
         PUBLICATIONS_DEMO[fiche_id] = []
 
-    # Génère un ID pour la publication
     max_id = 0
     for publications in PUBLICATIONS_DEMO.values():
         for pub in publications:
@@ -738,6 +787,8 @@ def create_publication(fiche_id):
         'id': f'p{max_id + 1}',
         'titre': titre,
         'contenu': contenu,
+        'image_url': image_url,
+        'image_filename': image_filename,
         'date': datetime.now().strftime('%Y-%m-%d'),
         'statut': 'publié'
     }
@@ -767,12 +818,24 @@ def migrate_to_bigint():
     except Exception as e:
         logger.warning(f"Migration skipped (already done or table doesn't exist): {e}")
 
+def migrate_publications_image():
+    """Add image_url and image_filename columns to publications table"""
+    try:
+        db.session.execute(text('ALTER TABLE publications ADD COLUMN image_url VARCHAR(500)'))
+        db.session.execute(text('ALTER TABLE publications ADD COLUMN image_filename VARCHAR(255)'))
+        db.session.commit()
+        logger.info("✓ Migration: added image_url and image_filename to publications")
+    except Exception as e:
+        db.session.rollback()
+        logger.warning(f"Migration publications image skipped (already done): {e}")
+
 @app.before_request
 def create_tables():
     """Create database tables if they don't exist and apply migrations"""
     db.create_all()
-    # Apply migration on first request (idempotent)
+    # Apply migrations on first request (idempotent)
     migrate_to_bigint()
+    migrate_publications_image()
 
 if __name__ == '__main__':
     with app.app_context():

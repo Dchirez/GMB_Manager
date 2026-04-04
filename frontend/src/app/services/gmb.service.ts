@@ -28,6 +28,8 @@ export interface Publication {
   id: string;
   titre: string;
   contenu: string;
+  image_url: string | null;
+  image_filename: string | null;
   date: string;
   statut: string;
 }
@@ -105,7 +107,17 @@ export class GmbService {
     return this.http.get<Publication[]>(`${this.apiUrl}/publications/fiches/${ficheId}/posts`);
   }
 
-  createPublication(ficheId: string, titre: string, contenu: string): Observable<Publication> {
+  createPublication(ficheId: string, titre: string, contenu: string, file?: File): Observable<Publication> {
+    if (file) {
+      const formData = new FormData();
+      formData.append('titre', titre);
+      formData.append('contenu', contenu);
+      formData.append('file', file);
+      return this.http.post<Publication>(
+        `${this.apiUrl}/publications/fiches/${ficheId}/posts`,
+        formData
+      );
+    }
     return this.http.post<Publication>(
       `${this.apiUrl}/publications/fiches/${ficheId}/posts`,
       { titre, contenu }
