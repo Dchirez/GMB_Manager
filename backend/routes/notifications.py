@@ -125,7 +125,7 @@ def get_notifications():
 
     except Exception as e:
         logger.error(f"Erreur get notifications: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Internal error'}), 500
 
 
 @notifications_bp.route('/<int:notif_id>/lire', methods=['PUT'])
@@ -151,7 +151,7 @@ def mark_notification_read(notif_id):
     except Exception as e:
         logger.error(f"Erreur mark read: {e}")
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Internal error'}), 500
 
 
 @notifications_bp.route('/lire-tout', methods=['PUT'])
@@ -173,4 +173,4 @@ def mark_all_notifications_read():
     except Exception as e:
         logger.error(f"Erreur mark all read: {e}")
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Internal error'}), 500

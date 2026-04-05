@@ -21,16 +21,36 @@ export class AuthCallbackComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    this.route.queryParams.subscribe((params) => {
-      const token = params['token'];
+    // SECURITY FIX [CWE-598]: the JWT is delivered via URL fragment (#token=...),
+    // not via the query string, so it never appears in Referer headers or server logs.
+    // Fallback: still accept ?token= for backward compatibility during rollout.
+    const hash = window.location.hash || '';
+    let token: string | null = null;
 
-      if (token) {
-        this.authService.setToken(token);
-        this.router.navigate(['/dashboard']);
-      } else {
-        console.error('Aucun token fourni');
-        this.router.navigate(['/login']);
-      }
-    });
+    if (hash.startsWith('#')) {
+      const params = new URLSearchParams(hash.substring(1));
+      token = params.get('token');
+    }
+
+    if (!token) {
+      this.route.queryParams.subscribe((params) => {
+        token = params['token'];
+        this.finalize(token);
+      });
+      return;
+    }
+
+    this.finalize(token);
+  }
+
+  private finalize(token: string | null): void {
+    if (token) {
+      this.authService.setToken(token);
+      // Clear fragment from URL history
+      try { history.replaceState(null, '', window.location.pathname); } catch {}
+      this.router.navigate(['/dashboard']);
+    } else {
+      this.router.navigate(['/login']);
+    }
   }
 }

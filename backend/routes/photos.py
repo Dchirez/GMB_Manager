@@ -35,7 +35,7 @@ def get_photos(fiche_id):
 
     except Exception as e:
         logger.error(f"Erreur get photos: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Internal error'}), 500
 
 
 @photos_bp.route('/fiches/<fiche_id>/photos', methods=['POST'])
@@ -65,13 +65,19 @@ def upload_photo(fiche_id):
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
 
-        # Vérifier que c'est une image
+        # SECURITY FIX [CWE-434]: validate both extension AND content-type
         allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
-        if not (file.filename.rsplit('.', 1)[1].lower() in allowed_extensions):
+        allowed_mimes = {'image/png', 'image/jpeg', 'image/gif', 'image/webp'}
+        parts = file.filename.rsplit('.', 1)
+        if len(parts) < 2 or parts[1].lower() not in allowed_extensions:
+            return jsonify({'error': 'File type not allowed'}), 400
+        if file.content_type not in allowed_mimes:
             return jsonify({'error': 'File type not allowed'}), 400
 
-        # Caption optionnel
+        # Caption optionnel, longueur bornée
         caption = request.form.get('caption', '')
+        if len(caption) > 255:
+            return jsonify({'error': 'Caption too long'}), 400
 
         # Upload à Supabase
         supabase_url = os.getenv('SUPABASE_URL')
@@ -86,11 +92,17 @@ def upload_photo(fiche_id):
         file_extension = file.filename.rsplit('.', 1)[1].lower()
         unique_filename = f"{fiche_id}/{uuid.uuid4()}.{file_extension}"
 
-        # Upload vers Supabase Storage
+        # SECURITY FIX [CWE-434]: force a safe server-controlled content-type
+        safe_mime_map = {
+            'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+            'gif': 'image/gif', 'webp': 'image/webp',
+        }
+        safe_mime = safe_mime_map[file_extension]
+
         headers = {
             'Authorization': f'Bearer {supabase_key}',
             'apikey': supabase_key,
-            'Content-Type': file.content_type
+            'Content-Type': safe_mime
         }
 
         supabase_endpoint = f"{supabase_url}/storage/v1/object/gmb-photos/{unique_filename}"
@@ -98,7 +110,10 @@ def upload_photo(fiche_id):
         logger.info(f"Uploading file to Supabase: {unique_filename}")
 
         file_data = file.read()
-        logger.info(f"File size: {len(file_data)} bytes, Content-Type: {file.content_type}")
+        # SECURITY FIX [CWE-400]: cap individual file size (MAX_CONTENT_LENGTH also enforced globally)
+        if len(file_data) > 5 * 1024 * 1024:
+            return jsonify({'error': 'File too large'}), 413
+        logger.info(f"File size: {len(file_data)} bytes")
 
         response = requests.post(
             supabase_endpoint,
@@ -108,8 +123,9 @@ def upload_photo(fiche_id):
         )
 
         if response.status_code not in [200, 201]:
-            logger.error(f"Supabase upload error: {response.status_code} - {response.text}")
-            return jsonify({'error': f'Upload failed: {response.text}'}), 500
+            logger.error(f"Supabase upload error: {response.status_code}")
+            # SECURITY FIX [CWE-209]: do not forward raw upstream errors
+            return jsonify({'error': 'Upload failed'}), 500
 
         # Construire l'URL publique
         public_url = f"{supabase_url}/storage/v1/object/public/gmb-photos/{unique_filename}"
@@ -131,7 +147,7 @@ def upload_photo(fiche_id):
     except Exception as e:
         logger.error(f"Erreur upload photo: {e}")
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Internal error'}), 500
 
 
 @photos_bp.route('/fiches/<fiche_id>/photos/<photo_id>', methods=['DELETE'])
@@ -187,4 +203,4 @@ def delete_photo(fiche_id, photo_id):
     except Exception as e:
         logger.error(f"Erreur delete photo: {e}")
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Internal error'}), 500

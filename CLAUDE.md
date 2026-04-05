@@ -102,13 +102,19 @@ gérer les avis clients et créer des publications.
    - Backend : POST multipart/form-data avec champs titre, contenu, file (optionnel)
    - Upload vers Supabase Storage (bucket gmb-photos, sous-dossier publications/)
    - Nouveaux champs Publication : `image_url`, `image_filename` (nullable)
-   - Migration auto `migrate_publications_image()` dans app.py
+   - Migration idempotente via `run_migrations()` dans app.py (une seule fois par processus)
    - Frontend : bouton "Ajouter une photo" avec preview avant publication
    - Validation fichier : max 5 Mo, formats png/jpg/jpeg/gif/webp
    - Affichage de l'image dans la liste des publications
    - Service Angular : `createPublication()` envoie FormData si fichier, JSON sinon
 
-6. **Cache frontend avec TTL** (avril 2026) :
+6. **Migrations BDD idempotentes** (avril 2026) :
+   - Fonction `run_migrations()` dans app.py, exécutée une seule fois par processus (flag `_migrations_applied`)
+   - Helpers `_column_exists()` et `_column_type()` qui interrogent `information_schema` pour vérifier avant d'altérer
+   - Fix: les migrations tournaient à chaque requête HTTP via `@app.before_request`, spammant les logs avec des erreurs `DuplicateColumn`
+   - Migrations actives : `users.id → BigInteger`, `publications.image_url/image_filename`
+
+7. **Cache frontend avec TTL** (avril 2026) :
    - Cache mémoire + sessionStorage dans `gmb.service.ts`
    - TTL de 5 minutes, stale-while-revalidate (données périmées affichées instantanément + refresh en arrière-plan)
    - Méthodes cachées : getFiches, getFiche, getAvis, getPublications, getPhotos, getAvisStats, getDashboardStats
@@ -118,7 +124,7 @@ gérer les avis clients et créer des publications.
    - Persistance cross-refresh via sessionStorage (préfixe `gmb_cache_`)
    - Aucune librairie externe (solution vanilla Angular)
 
-7. **Seed avis démo en BDD** (avril 2026) :
+8. **Seed avis démo en BDD** (avril 2026) :
    - Fonction helper `create_demo_fiches_and_avis()` dans app.py
    - Crée fiches ET avis associés en BDD (IDs cohérents)
    - Auto-seed dans `GET /api/avis/fiches/:id/avis` : si fiche existe en BDD sans avis, les avis démo sont créés à la volée
@@ -194,7 +200,7 @@ GOOGLE_REDIRECT_URI=https://gmb-backend.dchirez.fr/auth/callback
 
 # Flask Configuration
 FRONTEND_URL=https://gmb.dchirez.fr
-SECRET_KEY=gmb-manager-super-secret-key-2026
+SECRET_KEY=<voir Render dashboard / générer via `python -c "import secrets; print(secrets.token_urlsafe(64))"`>
 FLASK_ENV=production
 
 # Database Configuration (PostgreSQL/Supabase)
@@ -218,7 +224,7 @@ GOOGLE_REDIRECT_URI=http://localhost:5000/auth/callback
 
 # Flask Configuration
 FRONTEND_URL=http://localhost:4200
-SECRET_KEY=gmb-manager-super-secret-key-2026
+SECRET_KEY=<voir Render dashboard / générer via `python -c "import secrets; print(secrets.token_urlsafe(64))"`>
 FLASK_ENV=development
 
 # Database Configuration (PostgreSQL/Supabase)

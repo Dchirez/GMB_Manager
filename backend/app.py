@@ -1,9 +1,10 @@
 import os
 import json
 import logging
-from datetime import datetime
+import secrets
+from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
-from flask import Flask, request, jsonify, redirect, session
+from flask import Flask, request, jsonify, redirect, session, abort
 from flask_cors import CORS
 from flask_session import Session
 import jwt
@@ -15,6 +16,14 @@ from routes.stats import stats_bp
 from routes.notifications import notifications_bp, generate_notifications
 from routes.photos import photos_bp
 from utils.decorators import token_required
+
+# SECURITY FIX [CWE-770]: rate limiting
+try:
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
+    _HAS_LIMITER = True
+except ImportError:
+    _HAS_LIMITER = False
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -132,11 +141,28 @@ if os.getenv('FLASK_ENV') == 'development':
 
 app = Flask(__name__)
 
-# Configuration
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'gmb-manager-super-secret-key-2026')
+# SECURITY FIX [CWE-798]: SECRET_KEY must come from env, no hardcoded fallback
+_secret_key = os.getenv('SECRET_KEY')
+_is_production = os.getenv('FLASK_ENV') == 'production'
+if not _secret_key:
+    if _is_production:
+        raise RuntimeError("SECRET_KEY environment variable is required in production")
+    # Dev only: generate an ephemeral random key (NOT persisted)
+    _secret_key = secrets.token_urlsafe(64)
+    logger.warning("SECRET_KEY not set — using an ephemeral random key (DEV ONLY)")
+elif len(_secret_key) < 32:
+    raise RuntimeError("SECRET_KEY must be at least 32 characters")
+
+app.config['SECRET_KEY'] = _secret_key
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_PERMANENT'] = False
 app.config['SESSION_USE_SIGNER'] = True
+# SECURITY FIX [CWE-614/CWE-1004]: secure session cookie flags
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SECURE'] = _is_production
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+# SECURITY FIX [CWE-434/CWE-400]: cap request body to 5 MB to prevent DoS via uploads
+app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024
 
 # Database configuration
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
@@ -144,6 +170,11 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
     'sqlite:///gmb_manager.db'  # Fallback to SQLite for development
 )
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# SECURITY/RELIABILITY: avoid stale DB connections on Supabase pooler
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True,
+    'pool_recycle': 300,
+}
 
 # Initialize database
 db.init_app(app)
@@ -151,19 +182,54 @@ db.init_app(app)
 # Initialize Flask-Session
 Session(app)
 
-# CORS Configuration
+# SECURITY FIX [CWE-942]: strict CORS — no permissive localhost fallback in prod
+_frontend_url = os.getenv('FRONTEND_URL')
+if not _frontend_url:
+    if _is_production:
+        raise RuntimeError("FRONTEND_URL is required in production (strict CORS)")
+    _frontend_url = 'http://localhost:4200'
+
 CORS(app, resources={
     r"/api/*": {
-        "origins": [os.getenv('FRONTEND_URL', 'http://localhost:4200')],
+        "origins": [_frontend_url],
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization"]
     },
     r"/auth/*": {
-        "origins": [os.getenv('FRONTEND_URL', 'http://localhost:4200')],
+        "origins": [_frontend_url],
         "methods": ["GET", "POST", "OPTIONS"],
         "allow_headers": ["Content-Type"]
     }
 })
+
+# SECURITY FIX [CWE-307/CWE-770]: rate limiting on auth and mutation endpoints
+if _HAS_LIMITER:
+    limiter = Limiter(
+        app=app,
+        key_func=get_remote_address,
+        default_limits=["200 per hour", "60 per minute"],
+        storage_uri="memory://",
+    )
+else:
+    limiter = None
+    logger.warning("flask_limiter not installed — rate limiting disabled")
+
+# SECURITY FIX [CWE-693]: HTTP security headers on every response
+@app.after_request
+def _set_security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
+    if _is_production:
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    # API returns JSON only — minimal CSP (no inline, no external sources)
+    response.headers['Content-Security-Policy'] = "default-src 'none'; frame-ancestors 'none'"
+    return response
+
+# SECURITY FIX [CWE-209]: never leak raw exception messages to clients
+def _safe_error(message, status):
+    return jsonify({'error': message}), status
 
 # Register blueprints
 app.register_blueprint(stats_bp, url_prefix='/api/stats')
@@ -267,10 +333,17 @@ def auth_login():
     """
     from services.auth_service import get_google_auth_url
     try:
-        auth_url = get_google_auth_url()
+        # SECURITY FIX [CWE-352]: generate OAuth state, persist in signed session cookie
+        state = secrets.token_urlsafe(32)
+        session['oauth_state'] = state
+        auth_url = get_google_auth_url(state=state)
         return jsonify({'auth_url': auth_url}), 200
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"auth_login error: {e}")
+        return _safe_error('Unable to start authentication', 500)
+
+if limiter:
+    auth_login = limiter.limit("20 per minute")(auth_login)
 
 @app.route('/auth/callback', methods=['GET'])
 def auth_callback():
@@ -282,6 +355,15 @@ def auth_callback():
     code = request.args.get('code')
     if not code:
         return jsonify({'error': 'Missing authorization code'}), 400
+
+    # SECURITY FIX [CWE-352]: verify OAuth state to prevent login CSRF
+    received_state = request.args.get('state')
+    expected_state = session.pop('oauth_state', None)
+    if not received_state or not expected_state or not secrets.compare_digest(
+        str(received_state), str(expected_state)
+    ):
+        logger.warning("OAuth state mismatch — possible CSRF attempt")
+        return _safe_error('Invalid OAuth state', 400)
 
     try:
         user_data, access_token = exchange_code_for_token(code)
@@ -329,22 +411,27 @@ def auth_callback():
                 create_demo_fiches_and_avis(user.id)
                 logger.info(f"Created 4 demo fiches with avis for existing user {email}")
 
-        # Générer JWT
+        # SECURITY FIX [CWE-613]: JWT with exp/iat/nbf, short lifetime
+        # SECURITY FIX [CWE-522]: google_access_token is NOT included in JWT anymore;
+        # it is stored in DB (User.google_access_token) and loaded server-side.
+        now = datetime.now(timezone.utc)
         jwt_token = jwt.encode({
             'user_id': user.id,
             'email': email,
             'name': name,
-            'google_access_token': access_token
+            'iat': now,
+            'nbf': now,
+            'exp': now + timedelta(hours=1),
         }, app.config['SECRET_KEY'], algorithm='HS256')
 
-        # Rediriger vers le frontend avec le token
-        frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:4200')
-        logger.info(f"OAuth successful for {email}, redirecting to frontend")
-        return redirect(f'{frontend_url}/auth/callback?token={jwt_token}')
+        # SECURITY FIX [CWE-598]: use URL fragment instead of query string
+        # (fragments are never sent in Referer headers or server logs)
+        logger.info(f"OAuth successful, redirecting to frontend")
+        return redirect(f'{_frontend_url}/auth/callback#token={jwt_token}')
 
     except Exception as e:
         logger.error(f"OAuth callback error: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return _safe_error('Authentication failed', 500)
 
 @app.route('/auth/me', methods=['GET'])
 @token_required
@@ -361,20 +448,11 @@ def auth_me():
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """
-    Vérification de santé du backend + création des tables manquantes
+    Vérification de santé du backend (lecture seule)
+    SECURITY FIX [CWE-732]: no longer triggers db.create_all() from an
+    unauthenticated endpoint — schema init is done at startup only.
     """
-    try:
-        db.create_all()
-        return jsonify({
-            'status': 'ok',
-            'message': 'Backend healthy, all tables created'
-        }), 200
-    except Exception as e:
-        logger.error(f"Health check error: {e}")
-        return jsonify({
-            'status': 'error',
-            'message': str(e)
-        }), 500
+    return jsonify({'status': 'ok'}), 200
 
 @app.route('/api/seed-demo-fiches', methods=['POST'])
 @token_required
@@ -404,7 +482,8 @@ def seed_demo_fiches():
     except Exception as e:
         logger.error(f"Error creating demo fiches: {e}")
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        # SECURITY FIX [CWE-209]: do not leak exception details
+        return _safe_error('Internal error', 500)
 
 # ==================== GMB ROUTES ====================
 
@@ -482,47 +561,45 @@ def get_fiche(fiche_id):
 def update_fiche(fiche_id):
     """Met à jour une fiche et recalcule le score"""
     user_id = request.user.get('user_id')
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
 
-    # Cherche la fiche en BDD
+    # SECURITY FIX [CWE-20]: cap field lengths to prevent abuse
+    for k in ('nom', 'telephone', 'adresse', 'site_web', 'horaires', 'description'):
+        v = data.get(k)
+        if v is not None and (not isinstance(v, str) or len(v) > 2000):
+            return _safe_error('Invalid field', 400)
+
+    # SECURITY FIX [CWE-639/CWE-668]: only update rows owned by the user.
+    # No in-memory demo fallback — that global dict was shared across users.
     try:
         fiche = Fiche.query.filter_by(id=fiche_id, user_id=user_id).first()
-        if fiche:
-            fiche.nom = data.get('nom', fiche.nom)
-            fiche.telephone = data.get('telephone', fiche.telephone)
-            fiche.adresse = data.get('adresse', fiche.adresse)
-            fiche.site_web = data.get('site_web', fiche.site_web)
-            fiche.horaires = data.get('horaires', fiche.horaires)
-            fiche.description = data.get('description', fiche.description)
-            fiche.score = calculer_score(fiche.to_dict())
-            fiche.updated_at = datetime.now()
+        if not fiche:
+            return _safe_error('Fiche not found', 404)
 
-            db.session.commit()
-            return jsonify(fiche.to_dict()), 200
+        fiche.nom = data.get('nom', fiche.nom)
+        fiche.telephone = data.get('telephone', fiche.telephone)
+        fiche.adresse = data.get('adresse', fiche.adresse)
+        fiche.site_web = data.get('site_web', fiche.site_web)
+        fiche.horaires = data.get('horaires', fiche.horaires)
+        fiche.description = data.get('description', fiche.description)
+        fiche.score = calculer_score(fiche.to_dict())
+        fiche.updated_at = datetime.now()
+
+        db.session.commit()
+        return jsonify(fiche.to_dict()), 200
     except Exception as e:
         logger.error(f"Erreur lors de la mise à jour en BDD: {e}")
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        return _safe_error('Internal error', 500)
 
-    # Fallback sur démo (modification en mémoire)
-    for fiche in FICHES_DEMO:
-        if fiche['id'] == fiche_id:
-            fiche.update({
-                'nom': data.get('nom', fiche.get('nom')),
-                'telephone': data.get('telephone', fiche.get('telephone')),
-                'adresse': data.get('adresse', fiche.get('adresse')),
-                'site_web': data.get('site_web', fiche.get('site_web')),
-                'horaires': data.get('horaires', fiche.get('horaires')),
-                'description': data.get('description', fiche.get('description')),
-            })
-            fiche['score'] = calculer_score(fiche)
-            return jsonify(fiche), 200
-
-    return jsonify({'error': 'Fiche not found'}), 404
-
+# SECURITY FIX [CWE-532/CWE-200]: debug endpoint disabled in production.
+# It used to return fragments of the Google access token in the response body
+# and log them, leaking credentials. Enable only in development.
 @app.route('/api/gmb/debug', methods=['GET'])
 @token_required
 def debug_gmb_api():
+    if _is_production:
+        return _safe_error('Not found', 404)
     """
     [DEBUG TEMPORAIRE] Endpoint de debug pour tester l'API Google Business Profile
     Retourne la réponse brute de l'API Google sans aucun traitement ni fallback
@@ -544,7 +621,7 @@ def debug_gmb_api():
         # Appeler l'API Google Business Profile - Account Management
         accounts_url = 'https://mybusinessaccountmanagement.googleapis.com/v1/accounts'
         logger.info(f"[DEBUG] Appel API: GET {accounts_url}")
-        logger.info(f"[DEBUG] Token: {google_access_token[:30]}...")
+        # SECURITY FIX [CWE-532]: never log token fragments
 
         response = requests.get(accounts_url, headers=headers, timeout=10)
 
@@ -558,22 +635,12 @@ def debug_gmb_api():
         except:
             response_data = response.text
 
+        # SECURITY FIX [CWE-200]: do not echo Authorization header or PII back
         return jsonify({
             'timestamp': datetime.now().isoformat(),
-            'debug_info': 'Réponse brute de l\'API Google Business Profile',
             'api_endpoint': accounts_url,
             'status_code': response.status_code,
-            'headers_sent': {
-                'Authorization': f'Bearer {google_access_token[:30]}...',
-                'Content-Type': 'application/json'
-            },
-            'response_headers': dict(response.headers),
             'response_body': response_data,
-            'user': {
-                'email': request.user.get('email'),
-                'user_id': request.user.get('user_id'),
-                'name': request.user.get('name')
-            },
             'success': response.status_code == 200
         }), response.status_code
 
@@ -584,17 +651,11 @@ def debug_gmb_api():
             'timestamp': datetime.now().isoformat()
         }), 504
     except requests.exceptions.RequestException as e:
-        return jsonify({
-            'error': f'Erreur de requête: {str(e)}',
-            'api_endpoint': 'https://mybusinessaccountmanagement.googleapis.com/v1/accounts',
-            'timestamp': datetime.now().isoformat()
-        }), 500
+        logger.error(f"GMB debug request error: {e}")
+        return _safe_error('Upstream request error', 502)
     except Exception as e:
-        return jsonify({
-            'error': f'Erreur inattendue: {str(e)}',
-            'api_endpoint': 'https://mybusinessaccountmanagement.googleapis.com/v1/accounts',
-            'timestamp': datetime.now().isoformat()
-        }), 500
+        logger.error(f"GMB debug unexpected error: {e}")
+        return _safe_error('Internal error', 500)
 
 # ==================== AVIS ROUTES ====================
 
@@ -605,6 +666,12 @@ def get_avis(fiche_id):
     from datetime import date
     import uuid as uuid_mod
 
+    # SECURITY FIX [CWE-639]: enforce fiche ownership before returning any avis
+    user_id = request.user.get('user_id')
+    owned_fiche = Fiche.query.filter_by(id=fiche_id, user_id=user_id).first()
+    if not owned_fiche:
+        return _safe_error('Fiche not found', 404)
+
     # Cherche en BDD d'abord
     try:
         avis_list = Avis.query.filter_by(fiche_id=fiche_id).all()
@@ -612,7 +679,7 @@ def get_avis(fiche_id):
             return jsonify([a.to_dict() for a in avis_list]), 200
 
         # Pas d'avis en BDD — si la fiche existe, seeder les avis démo
-        fiche = Fiche.query.filter_by(id=fiche_id).first()
+        fiche = owned_fiche
         if fiche and fiche.nom in DEMO_AVIS_BY_FICHE_NAME:
             logger.info(f"Seeding demo avis for fiche '{fiche.nom}' (id={fiche_id})")
             for avis_data in DEMO_AVIS_BY_FICHE_NAME[fiche.nom]:
@@ -633,22 +700,31 @@ def get_avis(fiche_id):
     except Exception as e:
         logger.error(f"Erreur lors de la lecture des avis en BDD: {e}")
         db.session.rollback()
+        return _safe_error('Internal error', 500)
 
-    # Fallback sur démo (pour fiches non-BDD)
-    avis = AVIS_DEMO.get(fiche_id, [])
-    return jsonify(avis), 200
+    # SECURITY: no demo fallback here — ownership already enforced and the fiche
+    # either has avis in DB or is correctly returned empty.
+    return jsonify([]), 200
 
 @app.route('/api/avis/fiches/<fiche_id>/avis/<avis_id>/reponse', methods=['POST'])
 @token_required
 def post_reponse(fiche_id, avis_id):
     """Ajoute une réponse à un avis"""
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     reponse_text = data.get('reponse')
 
-    if not reponse_text:
-        return jsonify({'error': 'Reponse text is required'}), 400
+    # SECURITY FIX [CWE-20]: basic input validation — bound the field length
+    if not reponse_text or not isinstance(reponse_text, str):
+        return _safe_error('Reponse text is required', 400)
+    if len(reponse_text) > 2000:
+        return _safe_error('Reponse text too long', 400)
 
-    # Cherche en BDD d'abord
+    # SECURITY FIX [CWE-639]: enforce ownership of the parent fiche
+    user_id = request.user.get('user_id')
+    owned_fiche = Fiche.query.filter_by(id=fiche_id, user_id=user_id).first()
+    if not owned_fiche:
+        return _safe_error('Fiche not found', 404)
+
     try:
         avis = Avis.query.filter_by(id=avis_id, fiche_id=fiche_id).first()
         if avis:
@@ -658,17 +734,9 @@ def post_reponse(fiche_id, avis_id):
     except Exception as e:
         logger.error(f"Erreur lors de la mise à jour de l'avis en BDD: {e}")
         db.session.rollback()
+        return _safe_error('Internal error', 500)
 
-    # Fallback sur démo
-    if fiche_id not in AVIS_DEMO:
-        return jsonify({'error': 'Fiche not found'}), 404
-
-    for avis in AVIS_DEMO[fiche_id]:
-        if avis['id'] == avis_id:
-            avis['reponse'] = reponse_text
-            return jsonify(avis), 200
-
-    return jsonify({'error': 'Avis not found'}), 404
+    return _safe_error('Avis not found', 404)
 
 # ==================== PUBLICATIONS ROUTES ====================
 
@@ -676,17 +744,18 @@ def post_reponse(fiche_id, avis_id):
 @token_required
 def get_publications(fiche_id):
     """Retourne la liste des publications pour une fiche"""
-    # Cherche en BDD d'abord
+    # SECURITY FIX [CWE-639]: enforce fiche ownership
+    user_id = request.user.get('user_id')
+    owned_fiche = Fiche.query.filter_by(id=fiche_id, user_id=user_id).first()
+    if not owned_fiche:
+        return _safe_error('Fiche not found', 404)
+
     try:
         publications_list = Publication.query.filter_by(fiche_id=fiche_id).all()
-        if publications_list:
-            return jsonify([p.to_dict() for p in publications_list]), 200
+        return jsonify([p.to_dict() for p in publications_list]), 200
     except Exception as e:
         logger.error(f"Erreur lors de la lecture des publications en BDD: {e}")
-
-    # Fallback sur démo
-    publications = PUBLICATIONS_DEMO.get(fiche_id, [])
-    return jsonify(publications), 200
+        return _safe_error('Internal error', 500)
 
 @app.route('/api/publications/fiches/<fiche_id>/posts', methods=['POST'])
 @token_required
@@ -694,46 +763,70 @@ def create_publication(fiche_id):
     """Crée une nouvelle publication (avec photo optionnelle via multipart/form-data)"""
     import uuid
 
+    # SECURITY FIX [CWE-639]: enforce fiche ownership before any DB/Storage write
+    user_id = request.user.get('user_id')
+    owned_fiche = Fiche.query.filter_by(id=fiche_id, user_id=user_id).first()
+    if not owned_fiche:
+        return _safe_error('Fiche not found', 404)
+
     # Supporte JSON et multipart/form-data
     if request.content_type and 'multipart/form-data' in request.content_type:
         titre = request.form.get('titre')
         contenu = request.form.get('contenu')
         file = request.files.get('file')
     else:
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         titre = data.get('titre')
         contenu = data.get('contenu')
         file = None
 
-    if not titre or not contenu:
-        return jsonify({'error': 'Titre and contenu are required'}), 400
+    # SECURITY FIX [CWE-20]: validate presence, type and length of text fields
+    if not titre or not contenu or not isinstance(titre, str) or not isinstance(contenu, str):
+        return _safe_error('Titre and contenu are required', 400)
+    if len(titre) > 255 or len(contenu) > 5000:
+        return _safe_error('Field too long', 400)
 
     # Upload photo vers Supabase si fichier fourni
     image_url = None
     image_filename = None
 
     if file and file.filename:
+        # SECURITY FIX [CWE-434]: strict allowlist of extensions AND content-types
         allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+        allowed_mimes = {'image/png', 'image/jpeg', 'image/gif', 'image/webp'}
         ext = file.filename.rsplit('.', 1)
         if len(ext) < 2 or ext[1].lower() not in allowed_extensions:
-            return jsonify({'error': 'File type not allowed'}), 400
+            return _safe_error('File type not allowed', 400)
+        if file.content_type not in allowed_mimes:
+            return _safe_error('File type not allowed', 400)
 
         supabase_url = os.getenv('SUPABASE_URL')
         supabase_key = os.getenv('SUPABASE_SERVICE_KEY')
 
         if not supabase_url or not supabase_key:
-            return jsonify({'error': 'Storage not configured'}), 500
+            return _safe_error('Storage not configured', 500)
 
         file_extension = ext[1].lower()
+        # SECURITY: filename is a server-generated UUID, not user-controlled
         unique_filename = f"publications/{fiche_id}/{uuid.uuid4()}.{file_extension}"
+
+        # Force a safe content-type instead of trusting the client
+        safe_mime = {
+            'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+            'gif': 'image/gif', 'webp': 'image/webp',
+        }[file_extension]
 
         headers = {
             'Authorization': f'Bearer {supabase_key}',
             'apikey': supabase_key,
-            'Content-Type': file.content_type
+            'Content-Type': safe_mime
         }
 
         file_data = file.read()
+        # Extra safety: reject files > 5 MB (MAX_CONTENT_LENGTH also caps this)
+        if len(file_data) > 5 * 1024 * 1024:
+            return _safe_error('File too large', 413)
+
         response = requests.post(
             f"{supabase_url}/storage/v1/object/gmb-photos/{unique_filename}",
             headers=headers,
@@ -742,14 +835,14 @@ def create_publication(fiche_id):
         )
 
         if response.status_code not in [200, 201]:
-            logger.error(f"Supabase upload error: {response.status_code} - {response.text}")
-            return jsonify({'error': f'Upload failed: {response.text}'}), 500
+            logger.error(f"Supabase upload error: {response.status_code}")
+            return _safe_error('Upload failed', 500)
 
         image_url = f"{supabase_url}/storage/v1/object/public/gmb-photos/{unique_filename}"
-        image_filename = file.filename
-        logger.info(f"Publication photo uploaded: {unique_filename}")
+        image_filename = unique_filename
+        logger.info("Publication photo uploaded")
 
-    # Essaie de créer en BDD
+    # Crée en BDD
     try:
         pub_id = str(uuid.uuid4())[:8]
 
@@ -769,32 +862,7 @@ def create_publication(fiche_id):
     except Exception as e:
         logger.error(f"Erreur lors de la création de la publication en BDD: {e}")
         db.session.rollback()
-
-    # Fallback sur démo
-    if fiche_id not in PUBLICATIONS_DEMO:
-        PUBLICATIONS_DEMO[fiche_id] = []
-
-    max_id = 0
-    for publications in PUBLICATIONS_DEMO.values():
-        for pub in publications:
-            try:
-                pub_num = int(pub['id'][1:])
-                max_id = max(max_id, pub_num)
-            except:
-                pass
-
-    new_publication = {
-        'id': f'p{max_id + 1}',
-        'titre': titre,
-        'contenu': contenu,
-        'image_url': image_url,
-        'image_filename': image_filename,
-        'date': datetime.now().strftime('%Y-%m-%d'),
-        'statut': 'publié'
-    }
-
-    PUBLICATIONS_DEMO[fiche_id].append(new_publication)
-    return jsonify(new_publication), 201
+        return _safe_error('Internal error', 500)
 
 @app.errorhandler(404)
 def not_found(error):
@@ -849,15 +917,20 @@ def run_migrations():
         db.session.rollback()
         logger.warning(f"Migration error: {e}")
 
-@app.before_request
-def create_tables():
-    """Create database tables if they don't exist and apply migrations"""
-    db.create_all()
-    run_migrations()
+# SECURITY FIX [CWE-732/CWE-400]: initialize the schema ONCE at startup, not on
+# every incoming request. Running db.create_all() + run_migrations() on every
+# request was both a performance problem and an unauthenticated trigger surface
+# (any HTTP hit reached the DDL path).
+with app.app_context():
+    try:
+        db.create_all()
+        run_migrations()
+        logger.info("✓ Database tables ready")
+    except Exception as e:
+        logger.error(f"Startup DB init failed: {e}")
 
 if __name__ == '__main__':
-    with app.app_context():
-        # Create tables if they don't exist (migration complete, no need to drop)
-        db.create_all()
-        logger.info("✓ Database tables ready")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # SECURITY FIX [CWE-489]: never enable Flask debug mode automatically.
+    # Debug mode exposes the Werkzeug debugger (RCE) if reachable.
+    debug_flag = os.getenv('FLASK_ENV') == 'development' and os.getenv('FLASK_DEBUG') == '1'
+    app.run(debug=debug_flag, host='0.0.0.0', port=5000)

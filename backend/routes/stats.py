@@ -17,12 +17,13 @@ stats_bp = Blueprint('stats', __name__)
 def get_avis_stats(fiche_id):
     """
     Retourne statistiques détaillées des avis pour une fiche
-    - Nombre total d'avis
-    - Note moyenne
-    - Répartition par note (1★ à 5★)
-    - Évolution mensuelle sur 12 mois
-    - Taux de réponse
     """
+    # SECURITY FIX [CWE-639]: enforce fiche ownership before exposing stats
+    user_id = request.user.get('user_id')
+    owned = Fiche.query.filter_by(id=fiche_id, user_id=user_id).first()
+    if not owned:
+        return jsonify({'error': 'Fiche not found'}), 404
+
     try:
         avis_list = Avis.query.filter_by(fiche_id=fiche_id).all()
 
@@ -88,7 +89,8 @@ def get_avis_stats(fiche_id):
 
     except Exception as e:
         logger.error(f"Erreur stats avis: {e}")
-        return jsonify({'error': str(e)}), 500
+        # SECURITY FIX [CWE-209]: generic error
+        return jsonify({'error': 'Internal error'}), 500
 
 
 @stats_bp.route('/dashboard', methods=['GET'])
@@ -149,4 +151,4 @@ def get_dashboard_stats():
 
     except Exception as e:
         logger.error(f"Erreur stats dashboard: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Internal error'}), 500

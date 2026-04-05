@@ -17,16 +17,26 @@ SCOPES = [
     'https://www.googleapis.com/auth/business.manage'
 ]
 
-def get_google_auth_url():
-    """Génère l'URL d'authentification Google OAuth 2.0"""
+def get_google_auth_url(state=None):
+    """Génère l'URL d'authentification Google OAuth 2.0
+
+    SECURITY FIX [CWE-352]: the caller must supply an unpredictable `state`
+    value that will be verified at the /auth/callback endpoint.
+    """
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        raise RuntimeError("Google OAuth is not configured (missing CLIENT_ID/SECRET)")
+
     params = {
         'client_id': GOOGLE_CLIENT_ID,
         'redirect_uri': REDIRECT_URI,
         'response_type': 'code',
         'scope': ' '.join(SCOPES),
         'access_type': 'offline',
-        'prompt': 'consent'
+        'prompt': 'consent',
+        'include_granted_scopes': 'true',
     }
+    if state:
+        params['state'] = state
 
     auth_url = f'https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}'
     return auth_url

@@ -1,30 +1,31 @@
-import { Injectable } from '@angular/core';
+import { inject } from '@angular/core';
 import { Router, CanActivateFn } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 
-export const authGuard: CanActivateFn = (route, state) => {
-  const authService = new (class {
-    constructor(
-      private auth: AuthService,
-      private router: Router
-    ) {}
+// SECURITY FIX [CWE-613]: validate token expiry client-side, not just presence.
+function isJwtExpired(token: string): boolean {
+  try {
+    const [, payload] = token.split('.');
+    if (!payload) return true;
+    const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+    if (!decoded.exp) return true;
+    return Date.now() >= decoded.exp * 1000;
+  } catch {
+    return true;
+  }
+}
 
-    canActivate(): boolean {
-      if (this.auth.isAuthenticated()) {
-        return true;
-      }
-      this.router.navigate(['/login']);
-      return false;
-    }
-  })(new AuthService(null as any), new Router());
+export const authGuard: CanActivateFn = () => {
+  const router = inject(Router);
+  const auth = inject(AuthService);
 
-  // Simple implementation
-  const isAuthenticated = localStorage.getItem('auth_token');
-  if (isAuthenticated) {
+  const token = auth.getToken();
+  if (token && !isJwtExpired(token)) {
     return true;
   }
 
-  const router = new Router();
+  // Token missing or expired — clear and redirect
+  auth.logout();
   router.navigate(['/login']);
   return false;
 };
