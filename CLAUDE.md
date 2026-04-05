@@ -359,3 +359,176 @@ Utilisation des fiches démo
    - GraphQL pour requêtes complexes
    - Tests unitaires (Jest/Karma)
    - CI/CD avec GitHub Actions
+
+## 12. Sécurisation (audit avril 2026) 🔒
+
+Audit de sécurité statique complet réalisé sur toute la stack (Flask + Angular + Supabase).
+21 vulnérabilités identifiées, 18 corrigées automatiquement, 3 nécessitent une action humaine.
+
+### 12a. Corrections appliquées ✅
+
+#### Authentification & JWT
+- **SECRET_KEY** : suppression du fallback hardcodé `gmb-manager-super-secret-key-2026`.
+  Le backend lève une `RuntimeError` si `SECRET_KEY` absente en production, ou génère
+  une clé éphémère aléatoire en dev. Longueur minimale forcée à 32 caractères.
+- **JWT expiration** : claims `iat`, `nbf`, `exp` (1 h) ajoutés à la génération.
+  Décodage strict avec `options={'require': ['exp', 'iat']}` — rejet des tokens
+  malformés ou sans expiration.
+- **google_access_token retiré du payload JWT** : stocké uniquement en BDD
+  (`User.google_access_token`) et rechargé par le décorateur `@token_required`
+  via `user_id`. Permet la révocation serveur-side.
+- **OAuth `state`** : paramètre `state` aléatoire (`secrets.token_urlsafe(32)`) généré
+  dans `/auth/login`, persisté en session signée, vérifié avec `secrets.compare_digest`
+  dans `/auth/callback` (protection login CSRF).
+- **JWT dans URL fragment** : la redirection post-OAuth utilise maintenant
+  `#token=JWT` au lieu de `?token=JWT` (les fragments ne sont jamais envoyés dans les
+  headers Referer ni loggués côté serveur). `AuthCallbackComponent` lit le fragment.
+- **Guard Angular** : `auth.guard.ts` réécrit proprement avec `inject()`, décode le
+  JWT côté client et vérifie l'expiration (`exp`). Redirection automatique vers
+  `/login` si token expiré, avec `authService.logout()`.
+
+#### IDOR (Insecure Direct Object References) — CWE-639
+Toutes les routes prenant un `fiche_id` en paramètre vérifient maintenant
+l'ownership de la fiche par l'utilisateur authentifié avant toute lecture/écriture :
+- `GET /api/avis/fiches/<id>/avis`
+- `POST /api/avis/fiches/<id>/avis/<avis_id>/reponse`
+- `GET /api/publications/fiches/<id>/posts`
+- `POST /api/publications/fiches/<id>/posts`
+- `GET /api/stats/fiches/<id>/avis`
+- `PUT /api/gmb/fiches/<id>` (ownership déjà présent, fallback FICHES_DEMO supprimé
+  car il mutait un dict global partagé entre tous les users — cross-user pollution).
+
+Helper `owned_fiche_or_403(fiche_id, user_id)` ajouté dans `utils/decorators.py`.
+
+#### Upload de fichiers (CWE-434 / CWE-400)
+- `app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024` (cap global à 5 Mo).
+- Validation stricte : extension **ET** `content_type` doivent être dans les
+  allowlists `{png,jpg,jpeg,gif,webp}` / `{image/png,image/jpeg,image/gif,image/webp}`.
+- `Content-Type` forcé côté serveur lors de l'upload à Supabase (on ne fait plus
+  confiance à celui envoyé par le client).
+- Nom de fichier stocké = UUID serveur (pas le filename utilisateur).
+- Cap par fichier : 5 Mo en plus de `MAX_CONTENT_LENGTH`.
+- Caption bornée à 255 caractères.
+
+#### CORS & headers HTTP
+- **CORS strict** : raise si `FRONTEND_URL` absent en production (plus de fallback
+  permissif sur `http://localhost:4200`).
+- **Security headers** injectés via `@app.after_request` :
+  - `X-Content-Type-Options: nosniff`
+  - `X-Frame-Options: DENY`
+  - `Referrer-Policy: strict-origin-when-cross-origin`
+  - `Permissions-Policy: geolocation=(), microphone=(), camera=()`
+  - `Strict-Transport-Security: max-age=31536000; includeSubDomains` (prod only)
+  - `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` (API JSON)
+- **Session cookies** : `HTTPONLY=True`, `SECURE=True` en prod, `SAMESITE=Lax`.
+- **vercel.json** : CSP stricte pour le frontend, HSTS, X-Frame-Options, permissions
+  policy. `connect-src` whitelist `gmb-backend.dchirez.fr` et `accounts.google.com`,
+  `img-src` autorise `*.supabase.co` pour la galerie.
+
+#### Rate limiting (CWE-307 / CWE-770)
+- `Flask-Limiter==3.8.0` ajouté dans `requirements.txt`.
+- Défaults globaux : `200/hour`, `60/minute`.
+- Limite spécifique sur `/auth/login` : `20/minute` (protection brute force du flow OAuth).
+- Storage in-memory (suffisant pour un seul worker gunicorn ; passer à Redis si scale horizontal).
+
+#### Fuite d'erreurs & logs (CWE-209 / CWE-532)
+- Plus aucun `jsonify({'error': str(e)})` renvoyé au client. Helper `_safe_error()`
+  dans `app.py`, messages génériques (`'Internal error'`, `'Invalid token'`, etc.).
+- Le stacktrace est loggé côté serveur mais jamais exposé.
+- Endpoint debug `/api/gmb/debug` :
+  - Désactivé (retourne 404) en production.
+  - Les fragments de token Google (`token[:30]`) ne sont plus loggés ni renvoyés
+    dans le JSON de réponse.
+- Flask debug mode (`app.run(debug=True)`) désactivé par défaut — activable
+  uniquement via `FLASK_ENV=development` **ET** `FLASK_DEBUG=1` (protection
+  Werkzeug debugger RCE).
+
+#### Validation des inputs (CWE-20)
+Longueurs max appliquées sur tous les champs texte des routes POST/PUT :
+- `titre` publication : 255 caractères
+- `contenu` publication : 5000 caractères
+- `reponse` avis : 2000 caractères
+- Champs fiche (`nom`, `telephone`, `adresse`, `site_web`, `horaires`, `description`) : 2000 caractères chacun
+
+#### Initialisation BDD (CWE-732 / CWE-400)
+- `db.create_all()` et `run_migrations()` ne tournent plus dans un `@app.before_request`
+  (qui s'exécutait à chaque requête HTTP, même non-authentifiée, offrant une surface
+  d'attaque DDL). L'init est maintenant fait **une seule fois** au démarrage du
+  processus via `with app.app_context()`.
+- `/api/health` ne trigger plus `db.create_all()` — c'est un simple endpoint read-only.
+
+### 12b. Actions humaines requises ⚠️
+
+1. **🔴 ROTATION DE `SECRET_KEY` SUR RENDER** (CRITIQUE)
+   - L'ancienne valeur `gmb-manager-super-secret-key-2026` est dans l'historique git.
+     Considérer la clé comme **compromise à vie**.
+   - Générer une nouvelle clé : `python -c "import secrets; print(secrets.token_urlsafe(64))"`
+   - Mettre à jour `SECRET_KEY` dans le dashboard Render.
+   - Conséquence : tous les JWT actuels deviendront invalides → les utilisateurs
+     devront se reconnecter (normal).
+
+2. **🟠 Installer Flask-Limiter sur Render**
+   - Le redéploiement doit `pip install -r requirements.txt` (auto via Render).
+   - Sans cette lib, `_HAS_LIMITER=False` et le rate limiting est désactivé avec un
+     warning dans les logs.
+
+3. **🟡 Tester le flow complet après déploiement**
+   - Login Google → vérifier que le state OAuth est généré/vérifié (logs)
+   - Vérifier que le JWT arrive en `#token=` dans l'URL de callback
+   - Essayer d'accéder à une fiche d'un autre user → doit retourner 404
+   - Tester un upload > 5 Mo → doit retourner 413
+
+### 12c. Risques résiduels connus (non corrigés dans cet audit)
+
+Les points suivants ont été identifiés mais **non corrigés** car trop lourds ou
+non prioritaires. À traiter ultérieurement :
+
+- **M-1 Token JWT dans `localStorage`** (CWE-922) : vulnérable au XSS.
+  Migration idéale → cookie `HttpOnly; Secure; SameSite=Lax` côté backend +
+  suppression de l'interceptor Angular qui injecte `Authorization: Bearer`.
+  Refacto significatif.
+- **M-5 `id_token` Google non vérifié cryptographiquement** (CWE-295) :
+  aujourd'hui on fait confiance à l'endpoint `userinfo` ; à terme utiliser
+  `google.oauth2.id_token.verify_oauth2_token(id_token, Request(), CLIENT_ID)`
+  pour valider la signature Google directement.
+- **Chiffrement at-rest des tokens Google en BDD** (CWE-522) :
+  `User.google_access_token` et `google_refresh_token` stockés en clair.
+  Idéalement chiffrer via `cryptography.Fernet` avec une clé dédiée dans l'env.
+
+### 12d. Checklist de déploiement sécurisé
+
+- [x] SECRET_KEY sans fallback hardcodé
+- [ ] **SECRET_KEY rotée sur Render** ← à faire manuellement (cf. 12b.1)
+- [x] FLASK_ENV=production sur Render
+- [x] CORS strict (raise si FRONTEND_URL manquant)
+- [x] `.env` dans `.gitignore` (vérifié)
+- [x] Flask debug mode désactivé
+- [x] Rate limiting configuré
+- [x] Headers HTTP de sécurité (backend + Vercel)
+- [x] JWT avec `exp`, signature vérifiée strictement
+- [x] IDOR fermés sur toutes les routes paramétrées
+- [x] OAuth `state` vérifié (login CSRF)
+- [x] Upload photos : taille + MIME + extension whitelistés
+- [x] Erreurs génériques côté client, stacktraces loggés serveur
+- [x] Endpoint `/api/gmb/debug` désactivé en prod
+- [x] Initialisation BDD retirée de `before_request`
+
+### 12e. Fichiers modifiés lors de l'audit sécurité
+
+**Backend :**
+- `backend/app.py` (core hardening : SECRET_KEY, JWT, CORS, headers, rate limit, IDOR)
+- `backend/utils/decorators.py` (JWT strict + helper `owned_fiche_or_403`)
+- `backend/services/auth_service.py` (support du paramètre `state` OAuth)
+- `backend/routes/stats.py` (IDOR + erreurs génériques)
+- `backend/routes/photos.py` (upload sécurisé + MIME + taille)
+- `backend/routes/notifications.py` (erreurs génériques)
+- `backend/requirements.txt` (ajout `Flask-Limiter==3.8.0`)
+- `backend/.env.example` (suppression de la SECRET_KEY leakée)
+
+**Frontend :**
+- `frontend/src/app/guards/auth.guard.ts` (réécriture + vérif `exp` côté client)
+- `frontend/src/app/components/auth-callback/auth-callback.component.ts` (lecture du fragment `#token=`)
+- `frontend/vercel.json` (CSP + HSTS + X-Frame-Options + Permissions-Policy)
+
+**Documentation :**
+- `CLAUDE.md` (section 12 + scrub SECRET_KEY des exemples .env)
