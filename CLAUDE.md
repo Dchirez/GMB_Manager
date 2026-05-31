@@ -240,7 +240,9 @@ SUPABASE_SERVICE_KEY=your-service-key
 - OAUTHLIB_RELAX_TOKEN_SCOPE=1 requis (Google réorganise les scopes)
 - localStorage key : 'auth_token' (uniforme partout)
 - Imports Python absolus (from services.xxx import xxx)
-- SESSION_TYPE=filesystem dans app.py
+- Session : cookie signé natif de Flask (plus de Flask-Session — voir section 13).
+  Seul le `state` OAuth y est stocké.
+- `redirect_uri` OAuth dérivé de l'hôte de la requête (`ProxyFix`) — voir section 13c.
 
 ## 9. Lancer le projet
 
@@ -532,3 +534,80 @@ non prioritaires. À traiter ultérieurement :
 
 **Documentation :**
 - `CLAUDE.md` (section 12 + scrub SECRET_KEY des exemples .env)
+
+## 13. Fix login Google cassé (mai 2026) 🔑
+
+Après l'audit sécurité (section 12), la connexion Google était **totalement
+cassée** : le bouton « Se connecter avec Google » laissait l'utilisateur bloqué
+sur `/login`, et lorsqu'on forçait le flow on obtenait `400 {"error": "Invalid
+OAuth state"}` après le retour de Google. Trois causes distinctes empilées :
+
+### 13a. `/auth/login` renvoyait 500 (Flask-Session incompatible Werkzeug 3)
+- **Symptôme :** `GET /auth/login` → `500 Internal Server Error`. Le frontend
+  affichait son `alert` d'erreur et restait sur la page de login.
+- **Cause :** `Flask-Session==0.5.0` est incompatible avec Werkzeug 3.x. Dès
+  qu'une route écrit dans la session (`session['oauth_state'] = state`, ajouté
+  par l'audit sécurité), Flask-Session passe un identifiant de session en
+  **bytes** à `response.set_cookie`, que Werkzeug 3 rejette :
+  `TypeError: cannot use a string pattern on a bytes-like object`.
+- **Correction :** suppression complète de Flask-Session → on utilise la session
+  **cookie signée native de Flask** (`SecureCookieSessionInterface`). Le seul
+  contenu stocké est le `state` OAuth éphémère, qui tient largement dans un
+  cookie signé. Plus robuste aussi sur Render multi-worker (pas de session
+  serveur sur disque éphémère/non partagé).
+- `Flask-Session==0.5.0` retiré de `requirements.txt`.
+
+### 13b. Le cookie de `state` ne survivait pas au flux XHR cross-origin
+- **Symptôme (latent, après fix 13a) :** `/auth/callback` rejetait en 400
+  « Invalid OAuth state ».
+- **Cause :** le frontend récupérait l'URL Google via un **XHR** vers
+  `/auth/login`. Le cookie de session posé en réponse à ce XHR cross-origin
+  n'était pas conservé de façon fiable par le navigateur (règles cookies
+  tiers / ITP), même en same-site.
+- **Correction :** le login se fait maintenant par **navigation top-level**.
+  Le bouton fait `window.location.href = ${apiUrl}/auth/login`, et le backend
+  pose le cookie `state` en contexte **first-party** puis **302 vers Google**.
+  Le chemin XHR/JSON est conservé en rétro-compat (détection
+  `Sec-Fetch-Mode: navigate` / `Accept: text/html`).
+- `AuthService.getGoogleAuthUrl()` remplacé par `getLoginUrl()`.
+
+### 13c. ⚠️ CAUSE RACINE — `redirect_uri` sur un hôte différent du cookie
+- **Symptôme :** 400 « Invalid OAuth state » persistait même après 13a/13b.
+- **Cause :** `GOOGLE_REDIRECT_URI` sur Render pointait vers
+  `https://gmb-manager-backend.onrender.com/auth/callback`, alors que le frontend
+  (et donc le cookie `state`) vivent sur `https://gmb-backend.dchirez.fr`. Google
+  renvoyait le callback sur l'hôte `onrender.com`, où le cookie **host-only**
+  `dchirez.fr` n'est jamais envoyé → `state` absent → 400.
+- **Correction (code, indépendante de l'env Render) :** le `redirect_uri` est
+  désormais **dérivé de l'hôte réel de la requête** via `request.url_root`.
+  `ProxyFix(app.wsgi_app, x_proto=1, x_host=1)` est ajouté pour faire confiance
+  aux en-têtes `X-Forwarded-Proto/Host` derrière le proxy Render/Cloudflare.
+  Login et callback partagent donc toujours le même hôte que le cookie. Helper
+  `_callback_redirect_uri()` ; `get_google_auth_url()` et
+  `exchange_code_for_token()` acceptent un paramètre `redirect_uri` (Google exige
+  un match exact entre l'auth request et le token exchange). Les deux hôtes
+  (`dchirez.fr` et `onrender.com`) sont autorisés dans Google Console, donc sûr.
+- `render.yaml` corrigé : `GOOGLE_REDIRECT_URI=https://gmb-backend.dchirez.fr/auth/callback`,
+  `FRONTEND_URL=https://gmb.dchirez.fr`, et `SESSION_TYPE` retiré (Flask-Session
+  supprimé). Mettre aussi à jour l'env du dashboard Render reste recommandé pour
+  rester propre, mais n'est plus indispensable.
+
+### 13d. Fichiers modifiés
+**Backend :**
+- `backend/app.py` (suppression Flask-Session → session native ; `ProxyFix` ;
+  `/auth/login` navigation vs XHR ; `_callback_redirect_uri()` dynamique)
+- `backend/services/auth_service.py` (`redirect_uri` paramétrable sur
+  `get_google_auth_url` et `exchange_code_for_token`)
+- `backend/requirements.txt` (retrait de `Flask-Session==0.5.0`)
+- `render.yaml` (valeurs `dchirez.fr` correctes, retrait `SESSION_TYPE`)
+
+**Frontend :**
+- `frontend/src/app/services/auth.service.ts` (`getGoogleAuthUrl()` → `getLoginUrl()`)
+- `frontend/src/app/components/login/login.component.ts` (navigation top-level)
+
+### 13e. Reste à faire (hors périmètre, non bloquant)
+- `app.py` ~ligne 345 : le rate-limit du login
+  (`auth_login = limiter.limit(...)(auth_login)`) réassigne juste le nom du
+  module **après** l'enregistrement de la route → la limite n'est pas réellement
+  appliquée. À corriger en décorant la vue avant `@app.route`, ou via
+  `limiter.limit` en décorateur direct.
