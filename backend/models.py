@@ -6,6 +6,8 @@ from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import uuid
 
+from utils.crypto import EncryptedText
+
 db = SQLAlchemy()
 
 
@@ -19,8 +21,8 @@ class User(db.Model):
     google_id = db.Column(db.String(255), unique=True, nullable=False)  # Google sub
     email = db.Column(db.String(255), unique=True, nullable=False)
     name = db.Column(db.String(255), nullable=False)
-    google_access_token = db.Column(db.Text, nullable=True)
-    google_refresh_token = db.Column(db.Text, nullable=True)
+    google_access_token = db.Column(EncryptedText, nullable=True)
+    google_refresh_token = db.Column(EncryptedText, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     # Relationships

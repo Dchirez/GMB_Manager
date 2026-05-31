@@ -481,6 +481,38 @@ def auth_me():
         'name': request.user.get('name')
     }), 200
 
+@app.route('/auth/account', methods=['DELETE'])
+@token_required
+def delete_account():
+    """
+    RGPD — droit à l'effacement : supprime le compte et TOUTES les données associées
+    (fiches, avis, publications, photos, notifications, jetons OAuth), et révoque
+    l'accès de l'application côté Google.
+    """
+    from services.auth_service import revoke_google_token
+
+    user_id = request.user.get('user_id')
+    user = User.query.filter_by(id=user_id).first()
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    try:
+        # Révoque l'accès côté Google (best-effort) avant d'effacer les tokens.
+        revoke_google_token(user.google_refresh_token or user.google_access_token)
+
+        # Les notifications référencent l'utilisateur sans cascade : suppression explicite.
+        Notification.query.filter_by(user_id=user.id).delete(synchronize_session=False)
+        # Les fiches (et en cascade avis/publications/photos) sont supprimées avec l'utilisateur.
+        db.session.delete(user)
+        db.session.commit()
+
+        logger.info(f"Account deleted (RGPD) for user_id={user_id}")
+        return jsonify({'message': 'Account and all associated data deleted'}), 200
+    except Exception as e:
+        logger.error(f"Account deletion error: {e}")
+        db.session.rollback()
+        return _safe_error('Internal error', 500)
+
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """

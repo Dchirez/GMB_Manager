@@ -11,6 +11,8 @@ backend/venv/
 backend/.venv/
 backend/.DS_Store
 backend/flask_session/
+backend/instance/
+backend/*.db
 
 # Frontend
 frontend/node_modules/

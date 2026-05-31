@@ -91,3 +91,23 @@ def exchange_code_for_token(code, redirect_uri=None):
             user_data['sub'] = user_data['id']
 
     return user_data, access_token
+
+def revoke_google_token(token):
+    """Révoque un token OAuth Google (access ou refresh).
+
+    Appelé lors de la suppression de compte (RGPD) pour couper l'accès de
+    l'application aux données Google de l'utilisateur. Best-effort : une erreur
+    réseau ou un token déjà invalide ne doit pas bloquer la suppression.
+    """
+    if not token:
+        return False
+    try:
+        resp = requests.post(
+            'https://oauth2.googleapis.com/revoke',
+            params={'token': token},
+            headers={'Content-Type': 'application/x-www-form-urlencoded'},
+            timeout=10,
+        )
+        return resp.status_code == 200
+    except requests.RequestException:
+        return False
