@@ -12,7 +12,11 @@ export class AuthService {
   constructor(private http: HttpClient) {}
 
   getGoogleAuthUrl(): Observable<{ auth_url: string }> {
-    return this.http.get<{ auth_url: string }>(`${this.apiUrl}/auth/login`);
+    // withCredentials so the browser stores the session cookie that carries the
+    // OAuth `state` (verified server-side at /auth/callback).
+    return this.http.get<{ auth_url: string }>(`${this.apiUrl}/auth/login`, {
+      withCredentials: true
+    });
   }
 
   setToken(token: string): void {

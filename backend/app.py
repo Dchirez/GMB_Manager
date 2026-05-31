@@ -6,7 +6,6 @@ from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify, redirect, session, abort
 from flask_cors import CORS
-from flask_session import Session
 import jwt
 import requests
 from sqlalchemy import text
@@ -154,9 +153,12 @@ elif len(_secret_key) < 32:
     raise RuntimeError("SECRET_KEY must be at least 32 characters")
 
 app.config['SECRET_KEY'] = _secret_key
-app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_PERMANENT'] = False
-app.config['SESSION_USE_SIGNER'] = True
+# NOTE: we use Flask's built-in signed-cookie session (not Flask-Session).
+# Flask-Session 0.5.0 is incompatible with Werkzeug 3.x (it passes a bytes
+# session id to set_cookie, raising a 500 on every request that writes the
+# session — which broke /auth/login). The only thing we store is the short-lived
+# OAuth `state`, which fits comfortably in a signed cookie.
 # SECURITY FIX [CWE-614/CWE-1004]: secure session cookie flags
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SECURE'] = _is_production
@@ -179,9 +181,6 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 # Initialize database
 db.init_app(app)
 
-# Initialize Flask-Session
-Session(app)
-
 # SECURITY FIX [CWE-942]: strict CORS — no permissive localhost fallback in prod
 _frontend_url = os.getenv('FRONTEND_URL')
 if not _frontend_url:
@@ -198,7 +197,10 @@ CORS(app, resources={
     r"/auth/*": {
         "origins": [_frontend_url],
         "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type"]
+        "allow_headers": ["Content-Type"],
+        # Needed so the browser stores/sends the session cookie carrying the
+        # OAuth `state` across the cross-subdomain XHR -> redirect flow.
+        "supports_credentials": True
     }
 })
 
