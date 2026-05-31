@@ -37,4 +37,10 @@ export class AuthService {
   getMe(): Observable<any> {
     return this.http.get(`${this.apiUrl}/auth/me`);
   }
+
+  // RGPD — droit à l'effacement : supprime le compte et toutes les données
+  // associées côté serveur, et révoque l'accès Google.
+  deleteAccount(): Observable<any> {
+    return this.http.delete(`${this.apiUrl}/auth/account`);
+  }
 }

@@ -611,3 +611,65 @@ OAuth state"}` après le retour de Google. Trois causes distinctes empilées :
   module **après** l'enregistrement de la route → la limite n'est pas réellement
   appliquée. À corriger en décorant la vue avant `@app.route`, ou via
   `limiter.limit` en décorateur direct.
+
+## 14. Conformité Google OAuth + RGPD/sécurité (mai 2026) 🔒
+
+Préparation de la **validation publique Google OAuth** (scope sensible
+`business.manage`) et durcissement RGPD/sécurité des données.
+
+### 14a. Pages publiques (validation Google)
+Google exige une page d'accueil publique et une politique de confidentialité
+accessibles **sans authentification** pour vérifier une app à scope sensible.
+- `frontend/src/app/components/home/home.component.ts` — landing publique (`/`),
+  présentation produit + CTA « Se connecter avec Google ».
+- `frontend/src/app/components/privacy/privacy.component.ts` — politique de
+  confidentialité (`/confidentialite`). Contient la déclaration **Limited Use /
+  Google API Services User Data Policy** (case obligatoire), données collectées,
+  sous-traitants (Google/Render/Supabase), conservation/suppression, RGPD.
+- `app.routes.ts` : `''` → `HomeComponent` (avant : redirigeait vers
+  `/dashboard`), `confidentialite` → `PrivacyComponent`, toutes deux **publiques**
+  (pas de `authGuard`).
+- `app.component.ts` : navbar masquée aussi sur `/` et `/confidentialite`.
+- **À fournir dans Google Cloud Console :** page d'accueil
+  `https://gmb.dchirez.fr/`, politique `https://gmb.dchirez.fr/confidentialite`,
+  domaine `dchirez.fr` vérifié (Search Console), + vidéo démo du flux OAuth.
+
+### 14b. Chiffrement des jetons OAuth au repos
+- **Problème :** `User.google_access_token` / `google_refresh_token` étaient
+  stockés **en clair** (`db.Text`). Un dump de la base = accès permanent aux
+  comptes Google des utilisateurs.
+- **Correction :** `backend/utils/crypto.py` — type SQLAlchemy `EncryptedText`
+  (Fernet/AES-128, lib `cryptography`) **transparent** : `process_bind_param`
+  chiffre, `process_result_value` déchiffre. `models.py` n'utilise plus que
+  `db.Column(EncryptedText, ...)` sur les 2 colonnes ; le reste du code est
+  inchangé.
+- **Clé :** `FERNET_KEY` (env) si présente, **sinon dérivée de `SECRET_KEY`** via
+  SHA-256 → aucune nouvelle variable à configurer sur Render (SECRET_KEY existe
+  déjà). Pour une clé dédiée :
+  `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
+- **Migration transparente :** les valeurs héritées en clair sont lues telles
+  quelles (catch `InvalidToken`) puis **re-chiffrées à la prochaine écriture**
+  (prochaine connexion de l'utilisateur). Rien à migrer manuellement.
+- `cryptography==42.0.8` ajouté à `requirements.txt`.
+
+### 14c. Suppression de compte (RGPD — droit à l'effacement)
+- `DELETE /auth/account` (`@token_required`) dans `app.py` : révoque le token
+  côté Google (`revoke_google_token()` dans `auth_service.py` →
+  `oauth2.googleapis.com/revoke`), supprime les `Notification` de l'utilisateur
+  (pas de cascade), puis `db.session.delete(user)` (cascade `delete-orphan` →
+  fiches → avis/publications/photos).
+- **Frontend :** `AuthService.deleteAccount()` + bouton « Supprimer mon compte »
+  dans `navbar.component.ts` avec modale de confirmation. Au succès : purge cache,
+  logout, redirection vers `/`.
+
+### 14d. Nettoyage
+- Dossiers locaux résiduels supprimés : `backend/flask_session/`,
+  `backend/instance/` (bases SQLite de test).
+- `.gitignore` durci : `backend/instance/`, `backend/*.db`.
+
+### 14e. Reste à faire (dépend d'actions hors-code)
+- **Résidence des données en région EU** (RGPD) : recréer le projet Supabase en
+  `eu-central-1` (Frankfurt) et déployer Render en région Frankfurt, puis migrer
+  `DATABASE_URL`. Seul point RGPD restant ; à faire dans les dashboards
+  Supabase/Render.
+- Soumettre l'app à la **vérification Google OAuth** (voir 14a).
