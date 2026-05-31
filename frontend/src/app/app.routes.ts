@@ -5,14 +5,17 @@ import { DashboardComponent } from './components/dashboard/dashboard.component';
 import { FicheDetailComponent } from './components/fiche-detail/fiche-detail.component';
 import { AvisComponent } from './components/avis/avis.component';
 import { PublicationsComponent } from './components/publications/publications.component';
+import { HomeComponent } from './components/home/home.component';
+import { PrivacyComponent } from './components/privacy/privacy.component';
 import { authGuard } from './guards/auth.guard';
 
 export const appRoutes: Routes = [
+  { path: '', component: HomeComponent },
+  { path: 'confidentialite', component: PrivacyComponent },
   { path: 'login', component: LoginComponent },
   { path: 'auth/callback', component: AuthCallbackComponent },
   { path: 'dashboard', component: DashboardComponent, canActivate: [authGuard] },
   { path: 'fiche/:id', component: FicheDetailComponent, canActivate: [authGuard] },
   { path: 'avis/:id', component: AvisComponent, canActivate: [authGuard] },
-  { path: 'publications/:id', component: PublicationsComponent, canActivate: [authGuard] },
-  { path: '', redirectTo: '/dashboard', pathMatch: 'full' }
+  { path: 'publications/:id', component: PublicationsComponent, canActivate: [authGuard] }
 ];

@@ -21,9 +21,15 @@ export class AppComponent implements OnInit {
 
   ngOnInit() {
     this.router.events.subscribe(() => {
-      // Hide navbar on login and auth/callback pages
-      const url = this.router.url;
-      this.showNavbar.set(!url.includes('/login') && !url.includes('/auth'));
+      // Hide navbar on public pages (home, privacy, login, auth/callback)
+      const url = this.router.url.split('?')[0].split('#')[0];
+      const isPublic =
+        url === '/' ||
+        url === '' ||
+        url.startsWith('/confidentialite') ||
+        url.includes('/login') ||
+        url.includes('/auth');
+      this.showNavbar.set(!isPublic);
     });
   }
 }
