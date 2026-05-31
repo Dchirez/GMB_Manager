@@ -331,7 +331,14 @@ PUBLICATIONS_DEMO = {
 @app.route('/auth/login', methods=['GET'])
 def auth_login():
     """
-    Retourne l'URL d'authentification Google OAuth 2.0
+    Démarre le flow OAuth Google.
+
+    Deux modes selon l'appelant :
+    - Navigation top-level (le bouton login fait window.location = /auth/login) :
+      on pose le cookie de session (qui porte le `state` OAuth) en contexte
+      first-party, puis on redirige (302) directement vers Google. C'est le
+      chemin fiable : le cookie est garanti stocké et renvoyé sur /auth/callback.
+    - Appel XHR (rétro-compat) : on renvoie {auth_url} en JSON.
     """
     from services.auth_service import get_google_auth_url
     try:
@@ -339,6 +346,13 @@ def auth_login():
         state = secrets.token_urlsafe(32)
         session['oauth_state'] = state
         auth_url = get_google_auth_url(state=state)
+
+        is_navigation = (
+            request.headers.get('Sec-Fetch-Mode') == 'navigate'
+            or 'text/html' in request.headers.get('Accept', '')
+        )
+        if is_navigation:
+            return redirect(auth_url)
         return jsonify({'auth_url': auth_url}), 200
     except Exception as e:
         logger.error(f"auth_login error: {e}")

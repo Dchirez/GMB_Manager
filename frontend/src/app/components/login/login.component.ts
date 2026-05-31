@@ -44,15 +44,7 @@ export class LoginComponent implements OnInit {
 
   loginWithGoogle(): void {
     this.isLoading = true;
-    this.authService.getGoogleAuthUrl().subscribe({
-      next: (response) => {
-        window.location.href = response.auth_url;
-      },
-      error: (error) => {
-        console.error('Erreur lors de la connexion:', error);
-        this.isLoading = false;
-        alert('Erreur lors de la connexion. Veuillez réessayer.');
-      }
-    });
+    // Top-level navigation so the OAuth state cookie is set first-party.
+    window.location.href = this.authService.getLoginUrl();
   }
 }

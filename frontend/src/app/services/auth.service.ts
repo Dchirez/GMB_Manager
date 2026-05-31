@@ -11,12 +11,11 @@ export class AuthService {
 
   constructor(private http: HttpClient) {}
 
-  getGoogleAuthUrl(): Observable<{ auth_url: string }> {
-    // withCredentials so the browser stores the session cookie that carries the
-    // OAuth `state` (verified server-side at /auth/callback).
-    return this.http.get<{ auth_url: string }>(`${this.apiUrl}/auth/login`, {
-      withCredentials: true
-    });
+  // Top-level navigation to /auth/login: the backend sets the session cookie
+  // (carrying the OAuth `state`) first-party and 302-redirects to Google. This
+  // avoids the cross-origin XHR cookie-storage issues that broke the state check.
+  getLoginUrl(): string {
+    return `${this.apiUrl}/auth/login`;
   }
 
   setToken(token: string): void {
