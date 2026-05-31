@@ -10,15 +10,16 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
+      # IMPORTANT: must be on the SAME host the frontend calls (gmb-backend.dchirez.fr),
+      # otherwise the OAuth `state` session cookie set at /auth/login is not sent to
+      # /auth/callback (host-only cookie) and the callback fails with 400 Invalid state.
       - key: GOOGLE_REDIRECT_URI
-        value: https://<render-app>.onrender.com/auth/callback
+        value: https://gmb-backend.dchirez.fr/auth/callback
       - key: FRONTEND_URL
-        value: https://<vercel-app>.vercel.app
+        value: https://gmb.dchirez.fr
       - key: SECRET_KEY
         sync: false
       - key: DATABASE_URL
         sync: false
       - key: FLASK_ENV
         value: production
-      - key: SESSION_TYPE
-        value: filesystem

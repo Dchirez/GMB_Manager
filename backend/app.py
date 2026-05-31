@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify, redirect, session, abort
 from flask_cors import CORS
+from werkzeug.middleware.proxy_fix import ProxyFix
 import jwt
 import requests
 from sqlalchemy import text
@@ -139,6 +140,11 @@ if os.getenv('FLASK_ENV') == 'development':
     os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'
 
 app = Flask(__name__)
+
+# Behind Render's proxy (and Cloudflare): trust X-Forwarded-Proto/Host so that
+# request.url_root reflects the real https host the browser used. This is what we
+# derive the OAuth redirect_uri from, keeping the `state` cookie host == callback host.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 # SECURITY FIX [CWE-798]: SECRET_KEY must come from env, no hardcoded fallback
 _secret_key = os.getenv('SECRET_KEY')
@@ -328,6 +334,20 @@ PUBLICATIONS_DEMO = {
 
 # ==================== AUTH ROUTES ====================
 
+def _callback_redirect_uri():
+    """Build the OAuth redirect_uri on the SAME host the request came in on.
+
+    Both the auth request and the token exchange must use this identical value
+    (Google enforces an exact match), and it guarantees the callback lands on the
+    same host that set the `state` session cookie. Falls back to the env-configured
+    GOOGLE_REDIRECT_URI if the host can't be determined.
+    """
+    from services.auth_service import REDIRECT_URI
+    root = request.url_root  # e.g. https://gmb-backend.dchirez.fr/
+    if root.startswith('https://'):
+        return root.rstrip('/') + '/auth/callback'
+    return REDIRECT_URI
+
 @app.route('/auth/login', methods=['GET'])
 def auth_login():
     """
@@ -345,7 +365,7 @@ def auth_login():
         # SECURITY FIX [CWE-352]: generate OAuth state, persist in signed session cookie
         state = secrets.token_urlsafe(32)
         session['oauth_state'] = state
-        auth_url = get_google_auth_url(state=state)
+        auth_url = get_google_auth_url(state=state, redirect_uri=_callback_redirect_uri())
 
         is_navigation = (
             request.headers.get('Sec-Fetch-Mode') == 'navigate'
@@ -382,7 +402,7 @@ def auth_callback():
         return _safe_error('Invalid OAuth state', 400)
 
     try:
-        user_data, access_token = exchange_code_for_token(code)
+        user_data, access_token = exchange_code_for_token(code, redirect_uri=_callback_redirect_uri())
         logger.info(f"OAuth user_data received: {user_data.keys()}")
 
         # Extract google_id (sub from OpenID Connect) with fallback to id, then email

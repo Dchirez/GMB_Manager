@@ -17,18 +17,21 @@ SCOPES = [
     'https://www.googleapis.com/auth/business.manage'
 ]
 
-def get_google_auth_url(state=None):
+def get_google_auth_url(state=None, redirect_uri=None):
     """Génère l'URL d'authentification Google OAuth 2.0
 
     SECURITY FIX [CWE-352]: the caller must supply an unpredictable `state`
     value that will be verified at the /auth/callback endpoint.
+
+    `redirect_uri` may be supplied to match the host the user actually hit
+    (so the OAuth `state` cookie host == callback host). Falls back to the env.
     """
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
         raise RuntimeError("Google OAuth is not configured (missing CLIENT_ID/SECRET)")
 
     params = {
         'client_id': GOOGLE_CLIENT_ID,
-        'redirect_uri': REDIRECT_URI,
+        'redirect_uri': redirect_uri or REDIRECT_URI,
         'response_type': 'code',
         'scope': ' '.join(SCOPES),
         'access_type': 'offline',
@@ -41,8 +44,12 @@ def get_google_auth_url(state=None):
     auth_url = f'https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}'
     return auth_url
 
-def exchange_code_for_token(code):
-    """Échange le code d'autorisation pour un token d'accès et les infos utilisateur"""
+def exchange_code_for_token(code, redirect_uri=None):
+    """Échange le code d'autorisation pour un token d'accès et les infos utilisateur
+
+    `redirect_uri` MUST match the one used to build the auth URL (Google enforces
+    an exact match). Falls back to the env value.
+    """
 
     # Étape 1: Échanger le code pour un token
     token_url = 'https://oauth2.googleapis.com/token'
@@ -51,7 +58,7 @@ def exchange_code_for_token(code):
         'code': code,
         'client_id': GOOGLE_CLIENT_ID,
         'client_secret': GOOGLE_CLIENT_SECRET,
-        'redirect_uri': REDIRECT_URI,
+        'redirect_uri': redirect_uri or REDIRECT_URI,
         'grant_type': 'authorization_code'
     }
 
