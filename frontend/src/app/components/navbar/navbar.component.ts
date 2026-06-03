@@ -3,7 +3,6 @@ import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 import { GmbService } from '../../services/gmb.service';
-import { ToastService } from '../../services/toast.service';
 import { NotificationsComponent } from '../notifications/notifications.component';
 import { SettingsModalComponent } from '../settings-modal/settings-modal.component';
 import { PlanModalComponent } from '../plan-modal/plan-modal.component';
@@ -59,6 +58,11 @@ import { IconComponent } from '../../shared/icon.component';
                   <div class="grow"><div class="pm-item-t">Gestion du forfait</div><div class="pm-item-s">Abonnement & facturation</div></div>
                   <app-icon name="arrowRight" style="color:var(--ink-faint);font-size:16px" />
                 </button>
+                <button class="pm-item" (click)="openInvoices()">
+                  <span class="pm-ic"><app-icon name="text" /></span>
+                  <div class="grow"><div class="pm-item-t">Factures & historique</div><div class="pm-item-s">Paiements & justificatifs PDF</div></div>
+                  <app-icon name="arrowRight" style="color:var(--ink-faint);font-size:16px" />
+                </button>
                 <div class="pm-sep"></div>
                 <button class="pm-item" (click)="askDelete()">
                   <span class="pm-ic"><app-icon name="close" /></span>
@@ -77,7 +81,7 @@ import { IconComponent } from '../../shared/icon.component';
 
     <!-- Modals d'apparence et de forfait -->
     @if (showSettings()) { <app-settings-modal (close)="showSettings.set(false)" /> }
-    @if (showPlan()) { <app-plan-modal (close)="showPlan.set(false)" (changePlan)="onPlanChange($event)" /> }
+    @if (showPlan()) { <app-plan-modal (close)="showPlan.set(false)" (choosePlan)="onChoosePlan($event)" /> }
 
     <!-- Confirmation de suppression de compte (RGPD) -->
     @if (showDeleteModal()) {
@@ -113,7 +117,6 @@ export class NavbarComponent implements OnInit {
   private authService = inject(AuthService);
   private gmbService = inject(GmbService);
   private router = inject(Router);
-  private toast = inject(ToastService);
   private host = inject(ElementRef);
 
   menuOpen = signal(false);
@@ -164,11 +167,12 @@ export class NavbarComponent implements OnInit {
 
   openSettings() { this.menuOpen.set(false); this.showSettings.set(true); }
   openPlan() { this.menuOpen.set(false); this.showPlan.set(true); }
+  openInvoices() { this.menuOpen.set(false); this.router.navigate(['/factures']); }
   askDelete() { this.menuOpen.set(false); this.deleteError.set(null); this.showDeleteModal.set(true); }
 
-  onPlanChange(name: string) {
+  onChoosePlan(planId: string) {
     this.showPlan.set(false);
-    this.toast.show(`Forfait ${name} activé ✨`);
+    this.router.navigate(['/paiement', planId]);
   }
 
   logout() {

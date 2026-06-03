@@ -75,13 +75,14 @@ const PLANS: Plan[] = [
 })
 export class PlanModalComponent {
   @Output() close = new EventEmitter<void>();
-  @Output() changePlan = new EventEmitter<string>();
+  /** Émet l'id du forfait choisi → l'app redirige vers la page de paiement. */
+  @Output() choosePlan = new EventEmitter<string>();
   plans = PLANS;
   current = 'pro';
 
   choose(p: Plan) {
     if (p.id === this.current) return;
-    this.changePlan.emit(p.name);
+    this.choosePlan.emit(p.id);
   }
 
   @HostListener('document:keydown.escape')

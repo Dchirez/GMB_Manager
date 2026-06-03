@@ -1,34 +1,38 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AuthService } from '../../services/auth.service';
+import { IconComponent } from '../../shared/icon.component';
 
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, IconComponent],
   template: `
-    <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div class="bg-white rounded-lg shadow-xl p-8 max-w-md w-full">
-        <div class="text-center mb-8">
-          <h1 class="text-4xl font-bold text-gray-800 mb-2">GMB Manager</h1>
-          <p class="text-gray-600">Gérez vos fiches Google My Business</p>
-        </div>
+    <main class="login-main">
+      <div class="login-card fade-up">
+        <img class="login-logo" src="assets/logo.png" alt="GMB Manager" />
+        <h1 style="font-size:26px;margin-bottom:8px">Content de vous revoir 👋</h1>
+        <p class="muted" style="font-size:15px;font-weight:600;margin-bottom:26px">
+          Connectez-vous pour piloter vos fiches Google en toute simplicité. 🌿
+        </p>
 
-        <button
-          (click)="loginWithGoogle()"
-          [disabled]="isLoading"
-          class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold py-3 px-4 rounded-lg transition duration-200 flex items-center justify-center gap-2"
-        >
-          <span *ngIf="!isLoading">🔑 Se connecter avec Google</span>
-          <span *ngIf="isLoading">Redirection en cours...</span>
+        <button class="btn btn-primary btn-lg btn-block" [disabled]="isLoading" (click)="loginWithGoogle()">
+          @if (!isLoading) { <app-icon name="google" /> Se connecter avec Google }
+          @else { <span class="spinner"></span> Redirection en cours… }
         </button>
 
-        <p class="text-gray-500 text-sm text-center mt-6">
-          Vous serez redirigé vers Google pour vous authentifier
+        <div class="login-or"><span>OU</span></div>
+
+        <button class="btn btn-ghost btn-block" (click)="loginWithGoogle()">
+          <app-icon name="globe" /> Continuer avec un e-mail
+        </button>
+
+        <p class="login-foot faint">
+          <app-icon name="check" style="color:var(--primary)" /> Vous serez redirigé vers Google pour vous authentifier
         </p>
       </div>
-    </div>
-  `
+    </main>
+  `,
 })
 export class LoginComponent implements OnInit {
   isLoading = false;
@@ -36,7 +40,6 @@ export class LoginComponent implements OnInit {
   constructor(private authService: AuthService) {}
 
   ngOnInit(): void {
-    // Rediriger vers le dashboard si déjà connecté
     if (this.authService.isAuthenticated()) {
       window.location.href = '/dashboard';
     }
@@ -44,7 +47,7 @@ export class LoginComponent implements OnInit {
 
   loginWithGoogle(): void {
     this.isLoading = true;
-    // Top-level navigation so the OAuth state cookie is set first-party.
+    // Navigation top-level pour que le cookie OAuth state soit posé first-party.
     window.location.href = this.authService.getLoginUrl();
   }
 }

@@ -6,12 +6,16 @@ import { ToastService } from '../../services/toast.service';
 import { IconComponent } from '../../shared/icon.component';
 import { ScoreBarComponent } from '../../shared/score-bar.component';
 import { CountUpComponent } from '../../shared/count-up.component';
+import { AddFicheModalComponent } from '../add-fiche-modal/add-fiche-modal.component';
 import { categoryEmoji } from '../../shared/score.util';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, IconComponent, ScoreBarComponent, CountUpComponent],
+  imports: [
+    CommonModule, IconComponent, ScoreBarComponent, CountUpComponent,
+    AddFicheModalComponent,
+  ],
   template: `
     <main class="container dash">
       <div class="dash-hello fade-up">
@@ -97,6 +101,10 @@ import { categoryEmoji } from '../../shared/score.util';
         }
       }
     </main>
+
+    @if (showAddFiche()) {
+      <app-add-fiche-modal (close)="showAddFiche.set(false)" (created)="onCreated($event)" />
+    }
   `,
 })
 export class DashboardComponent implements OnInit {
@@ -107,6 +115,7 @@ export class DashboardComponent implements OnInit {
   fiches = signal<Fiche[]>([]);
   isLoading = signal(true);
   totalReviews = signal(0);
+  showAddFiche = signal(false);
 
   avgScore = computed(() => {
     const f = this.fiches();
@@ -151,6 +160,12 @@ export class DashboardComponent implements OnInit {
   }
 
   addFiche() {
-    this.toast.show('Connexion d\'une nouvelle fiche bientôt disponible 🌿');
+    this.showAddFiche.set(true);
+  }
+
+  onCreated(fiche: Fiche) {
+    // Ajout optimiste en tête de liste (pas d'endpoint de création côté backend).
+    this.fiches.update(list => [fiche, ...list]);
+    this.toast.show('Fiche créée — pensez à la compléter 🌱');
   }
 }

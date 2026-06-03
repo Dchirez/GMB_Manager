@@ -7,6 +7,8 @@ import { AvisComponent } from './components/avis/avis.component';
 import { PublicationsComponent } from './components/publications/publications.component';
 import { HomeComponent } from './components/home/home.component';
 import { PrivacyComponent } from './components/privacy/privacy.component';
+import { PaymentComponent } from './components/payment/payment.component';
+import { InvoicesComponent } from './components/invoices/invoices.component';
 import { authGuard } from './guards/auth.guard';
 
 export const appRoutes: Routes = [
@@ -17,5 +19,7 @@ export const appRoutes: Routes = [
   { path: 'dashboard', component: DashboardComponent, canActivate: [authGuard] },
   { path: 'fiche/:id', component: FicheDetailComponent, canActivate: [authGuard] },
   { path: 'avis/:id', component: AvisComponent, canActivate: [authGuard] },
-  { path: 'publications/:id', component: PublicationsComponent, canActivate: [authGuard] }
+  { path: 'publications/:id', component: PublicationsComponent, canActivate: [authGuard] },
+  { path: 'paiement/:planId', component: PaymentComponent, canActivate: [authGuard] },
+  { path: 'factures', component: InvoicesComponent, canActivate: [authGuard] }
 ];
