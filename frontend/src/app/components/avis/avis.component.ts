@@ -1,171 +1,142 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, inject, input, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute } from '@angular/router';
 import { GmbService, Avis } from '../../services/gmb.service';
+import { ToastService } from '../../services/toast.service';
+import { IconComponent } from '../../shared/icon.component';
+import { StarsComponent } from '../../shared/stars.component';
 
 @Component({
   selector: 'app-avis',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, IconComponent, StarsComponent],
   template: `
-      <!-- Main Content -->
-      <main class="max-w-3xl mx-auto px-4 py-8">
-        <div *ngIf="isLoading()" class="text-center py-12">
-          <p class="text-gray-600">Chargement des avis...</p>
-        </div>
-
-        <!-- Note Moyenne -->
-        <div *ngIf="!isLoading() && avis().length > 0" class="bg-white rounded-lg shadow-md p-6 mb-6">
-          <h2 class="text-xl font-bold text-gray-900 mb-2">Note moyenne</h2>
-          <div class="flex items-center gap-3">
-            <span class="text-4xl font-bold text-yellow-500">{{ getNoteMoyenne().toFixed(1) }}/5</span>
-            <span class="text-gray-600">({{ avis().length }} avis)</span>
-          </div>
-        </div>
-
-        <!-- Avis List -->
-        <div *ngIf="!isLoading() && avis().length === 0" class="text-center py-12 bg-white rounded-lg">
-          <p class="text-gray-600">Aucun avis pour cette fiche</p>
-        </div>
-
-        <div class="space-y-4">
-          <div *ngFor="let avisItem of avis()" class="bg-white rounded-lg shadow-md p-6">
-            <!-- Avis Header -->
-            <div class="flex justify-between items-start mb-3">
-              <div>
-                <h3 class="font-bold text-gray-900">{{ avisItem.auteur }}</h3>
-                <p class="text-sm text-gray-600">{{ avisItem.date }}</p>
+    <div [class]="embedded() ? '' : 'container'" [style.padding]="embedded() ? '0' : '28px 0 80px'">
+      @if (isLoading()) {
+        <div class="center muted" style="padding:48px 0;font-weight:600">Chargement des avis…</div>
+      } @else {
+        <div class="avis-wrap">
+          <div class="card avis-banner fade-up">
+            <div class="row" style="gap:18px;flex-wrap:wrap">
+              <div class="avis-big">
+                <span class="avis-num">{{ noteMoyenne().toFixed(1) }}</span>
+                <app-stars [value]="noteMoyenne()" [size]="18" />
+                <span class="faint" style="font-size:13px;font-weight:600;margin-top:4px">{{ avis().length }} avis Google</span>
               </div>
-              <span class="text-yellow-500">{{ getStars(avisItem.note) }}</span>
-            </div>
-
-            <!-- Commentaire -->
-            <p class="text-gray-700 mb-4">{{ avisItem.commentaire }}</p>
-
-            <!-- Réponse -->
-            <div *ngIf="avisItem.reponse" class="bg-green-50 border-l-4 border-green-500 p-4 mb-4">
-              <p class="text-sm font-medium text-green-800 mb-1">Votre réponse :</p>
-              <p class="text-green-700">{{ avisItem.reponse }}</p>
-            </div>
-
-            <!-- Formulaire Réponse -->
-            <div *ngIf="!avisItem.reponse && replyingToId() !== avisItem.id" class="mt-4">
-              <button
-                (click)="startReply(avisItem.id)"
-                class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition"
-              >
-                Répondre
-              </button>
-            </div>
-
-            <div *ngIf="replyingToId() === avisItem.id" class="mt-4 space-y-3">
-              <textarea
-                [(ngModel)]="replyText"
-                placeholder="Écrivez votre réponse..."
-                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                rows="3"
-              ></textarea>
-              <div class="flex gap-2">
-                <button
-                  (click)="sendReply(avisItem.id)"
-                  [disabled]="!replyText || isReplying()"
-                  class="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded transition"
-                >
-                  {{ isReplying() ? 'Envoi...' : 'Envoyer' }}
-                </button>
-                <button
-                  (click)="cancelReply()"
-                  class="flex-1 bg-gray-400 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded transition"
-                >
-                  Annuler
-                </button>
+              <div class="grow" style="min-width:220px">
+                <h2 style="font-size:21px;margin-bottom:6px">Vos clients vous apprécient 💛</h2>
+                <p class="muted" style="font-size:14.5px;font-weight:600;line-height:1.55">
+                  @if (pending() > 0) {
+                    Il reste <strong style="color:var(--accent-deep)">{{ pending() }} avis sans réponse</strong>. Répondre, même brièvement, montre que vous êtes à l'écoute.
+                  } @else {
+                    Vous avez répondu à tous vos avis, bravo&nbsp;! C'est la meilleure façon de fidéliser. ✨
+                  }
+                </p>
               </div>
             </div>
           </div>
+
+          @if (avis().length === 0) {
+            <div class="card center muted" style="padding:40px;font-weight:600">Aucun avis pour cette fiche pour l'instant.</div>
+          }
+
+          <div class="reviews-list">
+            @for (a of avis(); track a.id; let i = $index) {
+              <div class="card fade-up" [style.animationDelay.ms]="i * 70">
+                <div class="row" style="gap:13px;margin-bottom:12px">
+                  <span class="review-av">{{ initials(a.auteur) }}</span>
+                  <div class="grow">
+                    <div class="row" style="justify-content:space-between">
+                      <strong style="font-size:15.5px">{{ a.auteur }}</strong>
+                      <span class="faint" style="font-size:13px;font-weight:600">{{ a.date }}</span>
+                    </div>
+                    <app-stars [value]="a.note" [size]="15" />
+                  </div>
+                </div>
+                <p style="font-size:15px;line-height:1.6;color:var(--ink)">{{ a.commentaire }}</p>
+
+                @if (a.reponse) {
+                  <div class="review-reply">
+                    <span class="row" style="gap:7px;font-weight:700;font-size:13px;color:var(--primary-deep);margin-bottom:5px"><app-icon name="reply" /> Votre réponse</span>
+                    <p class="muted" style="font-size:14px;line-height:1.55">{{ a.reponse }}</p>
+                  </div>
+                } @else if (replyingToId() === a.id) {
+                  <div class="review-replybox">
+                    <textarea class="textarea" style="min-height:80px" [(ngModel)]="replyText"
+                              placeholder="Répondez avec le sourire… un mot gentil fait toute la différence 🌿"></textarea>
+                    <div class="row" style="gap:8px;margin-top:10px;justify-content:flex-end">
+                      <button class="btn btn-quiet btn-sm" (click)="cancelReply()">Annuler</button>
+                      <button class="btn btn-primary btn-sm" [disabled]="isReplying()" (click)="sendReply(a.id)"><app-icon name="check" /> Publier</button>
+                    </div>
+                  </div>
+                } @else {
+                  <button class="btn btn-soft btn-sm" style="margin-top:14px" (click)="startReply(a.id)"><app-icon name="reply" /> Répondre</button>
+                }
+              </div>
+            }
+          </div>
         </div>
-      </main>
-  `
+      }
+    </div>
+  `,
 })
 export class AvisComponent implements OnInit {
+  /** Fourni quand le composant est intégré dans un onglet (sinon lu depuis la route). */
+  ficheIdInput = input<string>('', { alias: 'ficheId' });
+
+  private route = inject(ActivatedRoute);
+  private gmbService = inject(GmbService);
+  private toast = inject(ToastService);
+
   avis = signal<Avis[]>([]);
   isLoading = signal(true);
   isReplying = signal(false);
   replyingToId = signal<string | null>(null);
   replyText = '';
-  ficheId: string = '';
+  ficheId = '';
 
-  constructor(
-    private route: ActivatedRoute,
-    private router: Router,
-    private gmbService: GmbService
-  ) {}
+  embedded = () => !!this.ficheIdInput();
+  noteMoyenne = () => this.avis().length ? this.avis().reduce((s, a) => s + a.note, 0) / this.avis().length : 0;
+  pending = () => this.avis().filter(a => !a.reponse).length;
 
   ngOnInit(): void {
-    this.route.params.subscribe((params) => {
-      this.ficheId = params['id'];
+    if (this.ficheIdInput()) {
+      this.ficheId = this.ficheIdInput();
       this.loadAvis();
-    });
+    } else {
+      this.route.params.subscribe((p) => { this.ficheId = p['id']; this.loadAvis(); });
+    }
   }
 
   loadAvis(): void {
     this.isLoading.set(true);
     this.gmbService.getAvis(this.ficheId).subscribe({
-      next: (avis) => {
-        this.avis.set(avis);
-        this.isLoading.set(false);
-      },
-      error: (error) => {
-        console.error('Erreur lors du chargement des avis:', error);
-        this.isLoading.set(false);
-      }
+      next: (avis) => { this.avis.set(avis); this.isLoading.set(false); },
+      error: (e) => { console.error('Erreur chargement avis:', e); this.isLoading.set(false); },
     });
   }
 
-  getNoteMoyenne(): number {
-    if (this.avis().length === 0) return 0;
-    const sum = this.avis().reduce((acc, a) => acc + a.note, 0);
-    return sum / this.avis().length;
+  initials(author: string): string {
+    const p = (author || '').trim().split(/\s+/);
+    return ((p[0]?.[0] ?? '') + (p[1]?.[0] ?? '')).toUpperCase() || '🙂';
   }
 
-  getStars(note: number): string {
-    return '★'.repeat(note) + '☆'.repeat(5 - note);
-  }
+  startReply(id: string) { this.replyingToId.set(id); this.replyText = ''; }
+  cancelReply() { this.replyingToId.set(null); this.replyText = ''; }
 
-  startReply(avisId: string): void {
-    this.replyingToId.set(avisId);
-    this.replyText = '';
-  }
-
-  cancelReply(): void {
-    this.replyingToId.set(null);
-    this.replyText = '';
-  }
-
-  sendReply(avisId: string): void {
-    if (!this.replyText.trim()) {
-      alert('Veuillez écrire une réponse');
-      return;
-    }
-
+  sendReply(id: string) {
+    if (!this.replyText.trim()) return;
     this.isReplying.set(true);
-    this.gmbService.postReponse(this.ficheId, avisId, this.replyText).subscribe({
-      next: (updatedAvis) => {
-        const index = this.avis().findIndex(a => a.id === avisId);
-        if (index !== -1) {
-          const updated = [...this.avis()];
-          updated[index] = updatedAvis;
-          this.avis.set(updated);
-        }
+    this.gmbService.postReponse(this.ficheId, id, this.replyText).subscribe({
+      next: (updated) => {
+        this.avis.update(list => list.map(a => a.id === id ? updated : a));
         this.replyingToId.set(null);
         this.replyText = '';
         this.isReplying.set(false);
+        this.toast.show('Réponse publiée, merci pour votre attention 🙏');
       },
-      error: (error) => {
-        console.error('Erreur lors de l\'envoi de la réponse:', error);
-        this.isReplying.set(false);
-        alert('Erreur lors de l\'envoi de la réponse');
-      }
+      error: (e) => { console.error('Erreur réponse:', e); this.isReplying.set(false); },
     });
   }
 }

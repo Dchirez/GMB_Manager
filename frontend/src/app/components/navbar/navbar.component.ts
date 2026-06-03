@@ -1,94 +1,178 @@
-import { Component, signal, inject } from '@angular/core';
+import { Component, signal, inject, OnInit, ElementRef, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router, RouterLink } from '@angular/router';
+import { Router } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 import { GmbService } from '../../services/gmb.service';
+import { ToastService } from '../../services/toast.service';
 import { NotificationsComponent } from '../notifications/notifications.component';
+import { SettingsModalComponent } from '../settings-modal/settings-modal.component';
+import { PlanModalComponent } from '../plan-modal/plan-modal.component';
+import { IconComponent } from '../../shared/icon.component';
 
 @Component({
   selector: 'app-navbar',
   standalone: true,
-  imports: [CommonModule, RouterLink, NotificationsComponent],
+  imports: [CommonModule, NotificationsComponent, SettingsModalComponent, PlanModalComponent, IconComponent],
   template: `
-    <header class="bg-white shadow">
-      <div class="max-w-7xl mx-auto px-4 py-6">
-        <div class="flex justify-between items-center">
-          <div class="flex items-center gap-4">
-            <h1 [routerLink]="['/dashboard']" class="text-3xl font-bold text-gray-900 cursor-pointer hover:text-blue-600 transition">
-              GMB Manager
-            </h1>
-          </div>
+    <header class="topbar">
+      <div class="container topbar-inner">
+        <!-- Brand -->
+        <div class="brand" (click)="goDashboard()">
+          <img src="assets/logo.png" alt="GMB Manager" />
+          <span class="brand-name">GMB <span class="mark">Manager</span></span>
+        </div>
 
-          <div class="flex items-center gap-4">
-            <!-- Notifications -->
-            <app-notifications />
+        <div class="topbar-actions">
+          <app-notifications />
 
-            <!-- Delete account -->
-            <button
-              (click)="showDeleteModal.set(true)"
-              class="text-sm text-gray-500 hover:text-red-600 transition"
-            >
-              Supprimer mon compte
+          <!-- Profile dropdown -->
+          <div class="profile-wrap">
+            <button class="profile-btn" [class.open]="menuOpen()" (click)="toggleMenu($event)">
+              <span class="profile-av">{{ initials() }}</span>
+              <span class="profile-name">{{ shortName() }}</span>
+              <span class="profile-caret" [style.transform]="menuOpen() ? 'rotate(180deg)' : 'none'">
+                <app-icon name="caret" />
+              </span>
             </button>
 
-            <!-- Logout Button -->
-            <button
-              (click)="logout()"
-              class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded transition"
-            >
-              Déconnexion
-            </button>
+            @if (menuOpen()) {
+              <div class="profile-menu pop-in">
+                <div class="pm-head">
+                  <span class="pm-av">{{ initials() }}</span>
+                  <div class="grow" style="min-width:0">
+                    <div class="pm-name">{{ name() }}</div>
+                    <div class="pm-mail">{{ email() }}</div>
+                  </div>
+                </div>
+                <div class="pm-plan">
+                  <span class="row" style="gap:8px;font-weight:700;font-size:13.5px"><app-icon name="sparkle" style="color:var(--accent)" /> Forfait Pro</span>
+                  <button class="pm-plan-link" (click)="openPlan()">Gérer</button>
+                </div>
+                <div class="pm-sep"></div>
+                <button class="pm-item" (click)="openSettings()">
+                  <span class="pm-ic"><app-icon name="edit" /></span>
+                  <div class="grow"><div class="pm-item-t">Paramètres d'affichage</div><div class="pm-item-s">Couleur, police, espacement</div></div>
+                  <app-icon name="arrowRight" style="color:var(--ink-faint);font-size:16px" />
+                </button>
+                <button class="pm-item" (click)="openPlan()">
+                  <span class="pm-ic"><app-icon name="sparkle" /></span>
+                  <div class="grow"><div class="pm-item-t">Gestion du forfait</div><div class="pm-item-s">Abonnement & facturation</div></div>
+                  <app-icon name="arrowRight" style="color:var(--ink-faint);font-size:16px" />
+                </button>
+                <div class="pm-sep"></div>
+                <button class="pm-item" (click)="askDelete()">
+                  <span class="pm-ic"><app-icon name="close" /></span>
+                  <div class="grow"><div class="pm-item-t">Supprimer mon compte</div><div class="pm-item-s">Effacer définitivement vos données</div></div>
+                </button>
+                <button class="pm-item pm-logout" (click)="logout()">
+                  <span class="pm-ic"><app-icon name="logout" /></span>
+                  <div class="grow"><div class="pm-item-t">Se déconnecter</div></div>
+                </button>
+              </div>
+            }
           </div>
         </div>
       </div>
     </header>
 
-    <!-- Delete account confirmation modal -->
-    <div
-      *ngIf="showDeleteModal()"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
-    >
-      <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-        <h2 class="text-xl font-bold text-gray-900 mb-2">Supprimer votre compte ?</h2>
-        <p class="text-gray-600 text-sm mb-4">
-          Cette action est <strong>définitive</strong>. Toutes vos données (fiches, avis,
-          publications, photos) seront effacées et l'accès de GMB Manager à votre compte
-          Google sera révoqué. Cette opération est irréversible.
-        </p>
+    <!-- Modals d'apparence et de forfait -->
+    @if (showSettings()) { <app-settings-modal (close)="showSettings.set(false)" /> }
+    @if (showPlan()) { <app-plan-modal (close)="showPlan.set(false)" (changePlan)="onPlanChange($event)" /> }
 
-        <p *ngIf="deleteError()" class="text-red-600 text-sm mb-3">{{ deleteError() }}</p>
-
-        <div class="flex justify-end gap-3">
-          <button
-            (click)="showDeleteModal.set(false)"
-            [disabled]="isDeleting()"
-            class="px-4 py-2 rounded text-gray-700 hover:bg-gray-100 transition disabled:opacity-50"
-          >
-            Annuler
-          </button>
-          <button
-            (click)="confirmDelete()"
-            [disabled]="isDeleting()"
-            class="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white font-semibold transition disabled:opacity-50"
-          >
-            {{ isDeleting() ? 'Suppression…' : 'Supprimer définitivement' }}
-          </button>
+    <!-- Confirmation de suppression de compte (RGPD) -->
+    @if (showDeleteModal()) {
+      <div class="modal-overlay" (click)="showDeleteModal.set(false)">
+        <div class="modal" (click)="$event.stopPropagation()">
+          <div class="modal-head">
+            <div class="row" style="gap:13px">
+              <span class="modal-ic" style="background:#FBEAE4;color:#C2553B"><app-icon name="close" /></span>
+              <div><h2 style="font-size:21px">Supprimer votre compte ?</h2></div>
+            </div>
+            <button class="modal-close" (click)="showDeleteModal.set(false)"><app-icon name="close" /></button>
+          </div>
+          <div class="modal-body">
+            <p class="muted" style="font-size:14.5px;line-height:1.6">
+              Cette action est <strong>définitive</strong>. Toutes vos données (fiches, avis,
+              publications, photos) seront effacées et l'accès de GMB Manager à votre compte
+              Google sera révoqué. Cette opération est irréversible.
+            </p>
+            @if (deleteError()) { <p style="color:#C2553B;font-size:14px;margin-top:12px;font-weight:600">{{ deleteError() }}</p> }
+          </div>
+          <div class="modal-foot">
+            <button class="btn btn-quiet" [disabled]="isDeleting()" (click)="showDeleteModal.set(false)">Annuler</button>
+            <button class="btn btn-accent" style="background:#C2553B" [disabled]="isDeleting()" (click)="confirmDelete()">
+              {{ isDeleting() ? 'Suppression…' : 'Supprimer définitivement' }}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    }
   `,
-  styles: []
 })
-export class NavbarComponent {
+export class NavbarComponent implements OnInit {
   private authService = inject(AuthService);
   private gmbService = inject(GmbService);
   private router = inject(Router);
+  private toast = inject(ToastService);
+  private host = inject(ElementRef);
 
+  menuOpen = signal(false);
+  showSettings = signal(false);
+  showPlan = signal(false);
   showDeleteModal = signal(false);
   isDeleting = signal(false);
   deleteError = signal<string | null>(null);
 
+  name = signal('Mon compte');
+  email = signal('');
+
+  ngOnInit() {
+    this.authService.getMe().subscribe({
+      next: (me: any) => {
+        if (me?.name) this.name.set(me.name);
+        if (me?.email) this.email.set(me.email);
+      },
+      error: () => { /* garde les valeurs par défaut */ },
+    });
+  }
+
+  initials() {
+    const n = this.name().trim();
+    if (!n) return '🙂';
+    const parts = n.split(/\s+/);
+    const a = parts[0]?.[0] ?? '';
+    const b = parts.length > 1 ? parts[parts.length - 1][0] : '';
+    return (a + b).toUpperCase() || a.toUpperCase();
+  }
+
+  shortName() {
+    const parts = this.name().trim().split(/\s+/);
+    if (parts.length > 1) return `${parts[0]} ${parts[parts.length - 1][0]}.`;
+    return parts[0] || 'Compte';
+  }
+
+  toggleMenu(e: Event) { e.stopPropagation(); this.menuOpen.update(v => !v); }
+
+  @HostListener('document:click', ['$event'])
+  onDocClick(e: Event) {
+    if (this.menuOpen() && !this.host.nativeElement.contains(e.target)) this.menuOpen.set(false);
+  }
+  @HostListener('document:keydown.escape')
+  onEsc() { this.menuOpen.set(false); }
+
+  goDashboard() { this.router.navigate(['/dashboard']); }
+
+  openSettings() { this.menuOpen.set(false); this.showSettings.set(true); }
+  openPlan() { this.menuOpen.set(false); this.showPlan.set(true); }
+  askDelete() { this.menuOpen.set(false); this.deleteError.set(null); this.showDeleteModal.set(true); }
+
+  onPlanChange(name: string) {
+    this.showPlan.set(false);
+    this.toast.show(`Forfait ${name} activé ✨`);
+  }
+
   logout() {
+    this.menuOpen.set(false);
     this.gmbService.clearCache();
     this.authService.logout();
     this.router.navigate(['/login']);
@@ -106,7 +190,7 @@ export class NavbarComponent {
       error: () => {
         this.isDeleting.set(false);
         this.deleteError.set('La suppression a échoué. Réessayez ou contactez le support.');
-      }
+      },
     });
   }
 }

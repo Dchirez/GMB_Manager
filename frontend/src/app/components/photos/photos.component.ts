@@ -2,300 +2,215 @@ import { Component, OnInit, inject, input, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { GmbService, Photo } from '../../services/gmb.service';
+import { ToastService } from '../../services/toast.service';
+import { IconComponent } from '../../shared/icon.component';
 
 @Component({
   selector: 'app-photos',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, IconComponent],
   template: `
-    <div class="p-6 space-y-6">
-      <div class="flex justify-between items-center">
-        <h2 class="text-2xl font-bold text-gray-900">Galerie photos</h2>
-        <label class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 cursor-pointer transition">
-          <span>Ajouter une photo</span>
-          <input
-            type="file"
-            accept="image/*"
-            (change)="onFileSelected($event)"
-            class="hidden"
-          />
-        </label>
-      </div>
+    <input type="file" #fileInput accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
+           (change)="onFileSelected($event)" style="display:none" />
 
-      <!-- Upload progress -->
-      <div *ngIf="uploading()" class="bg-blue-50 p-4 rounded-lg">
-        <p class="text-sm text-blue-800">Téléchargement en cours...</p>
-        <div class="mt-2 w-full bg-blue-200 rounded-full h-2">
-          <div class="bg-blue-600 h-2 rounded-full" style="width: 50%"></div>
+    @if (uploadError()) {
+      <div class="card fade-up" style="background:#FBEAE4;border-color:#F3D3C8;color:#C2553B;font-weight:600;margin-bottom:var(--gap)">
+        {{ uploadError() }}
+      </div>
+    }
+
+    @if (allPhotos().length === 0 && !uploading()) {
+      <!-- Empty state -->
+      <div class="card photos-empty fade-up" [class.dragging]="drag()"
+           (dragover)="onDragOver($event)" (dragleave)="drag.set(false)" (drop)="onDrop($event)">
+        <div class="pe-illus">
+          <span class="pe-frame pe-frame-1"><app-icon name="image" /></span>
+          <span class="pe-frame pe-frame-2"><app-icon name="image" /></span>
+          <span class="pe-frame pe-frame-3"><app-icon name="camera" /></span>
+          <span class="pe-spark s1"><app-icon name="sparkle" /></span>
+          <span class="pe-spark s2"><app-icon name="sparkle" /></span>
         </div>
+        <h2 style="font-size:25px;margin-bottom:10px">Vos plus belles photos vont ici 📸</h2>
+        <p class="muted" style="font-size:16px;max-width:460px;line-height:1.6;margin-bottom:6px">
+          Les fiches avec photos reçoivent <strong style="color:var(--primary-deep)">jusqu'à 42% de demandes d'itinéraire en plus</strong>.
+          Glissez vos images ici, ou parcourez votre appareil.
+        </p>
+        <div class="row" style="gap:12px;margin-top:22px">
+          <button class="btn btn-primary btn-lg" (click)="fileInput.click()"><app-icon name="upload" /> Ajouter mes photos</button>
+        </div>
+        <p class="faint" style="font-size:13px;margin-top:16px;font-weight:600">JPG ou PNG · 5 Mo max · La devanture et l'intérieur fonctionnent le mieux</p>
       </div>
-
-      <!-- Messages -->
-      <div *ngIf="uploadSuccess()" class="bg-green-50 p-4 rounded-lg text-green-800">
-        Photo téléchargée avec succès!
-      </div>
-
-      <div *ngIf="uploadError()" class="bg-red-50 p-4 rounded-lg text-red-800">
-        Erreur: {{ uploadError() }}
-      </div>
-
-      <!-- Photo grid -->
-      <div class="space-y-4">
-        <div *ngIf="allPhotos().length === 0" class="text-center py-8 text-gray-500">
-          Aucune photo pour le moment
+    } @else {
+      <div class="card fade-up">
+        <div class="row" style="justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+          <div>
+            <h2 style="font-size:22px">Galerie photos</h2>
+            <p class="muted" style="font-size:14.5px;font-weight:600;margin-top:4px">
+              {{ allPhotos().length }} photo{{ allPhotos().length > 1 ? 's' : '' }} · belle vitrine ! ✨
+            </p>
+          </div>
+          <button class="btn btn-primary" [disabled]="uploading()" (click)="fileInput.click()">
+            <app-icon name="plus" /> {{ uploading() ? 'Envoi…' : 'Ajouter une photo' }}
+          </button>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div
-            *ngFor="let photo of allPhotos()"
-            class="relative group bg-gray-100 rounded-lg overflow-hidden aspect-square cursor-pointer"
-            (click)="openLightbox(photo)"
-          >
-            <img
-              [src]="photo.url"
-              [alt]="photo.caption || 'Photo'"
-              class="w-full h-full object-cover group-hover:opacity-75 transition"
-            />
-
-            <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition flex items-center justify-center">
-              <button
-                (click)="deletePhoto(photo, $event)"
-                class="opacity-0 group-hover:opacity-100 bg-red-600 text-white p-2 rounded-full transition"
-                title="Supprimer la photo"
-              >
-                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path
-                    fill-rule="evenodd"
-                    d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z"
-                    clip-rule="evenodd"
-                  ></path>
-                </svg>
-              </button>
+        <div class="photos-grid">
+          @for (photo of allPhotos(); track photo.id; let i = $index) {
+            <div class="photo-tile fade-up" [style.animationDelay.ms]="i * 60">
+              <div class="photo-img" (click)="openLightbox(photo)">
+                <img [src]="photo.url" [alt]="photo.caption || 'Photo'" />
+                @if (i === 0) { <span class="photo-cover">Couverture</span> }
+                <button class="photo-del" title="Retirer" (click)="deletePhoto(photo, $event)"><app-icon name="close" /></button>
+                @if (photo.caption) { <span class="photo-caption">{{ photo.caption }}</span> }
+              </div>
             </div>
+          }
+          <button class="photo-add" [disabled]="uploading()" (click)="fileInput.click()">
+            <span><app-icon name="plus" /></span>
+            <span style="font-weight:700;font-size:13.5px">Ajouter</span>
+          </button>
+        </div>
+      </div>
+    }
 
-            <div
-              *ngIf="photo.caption"
-              class="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white p-2 text-sm"
-            >
-              {{ photo.caption }}
+    <!-- Modale de légende -->
+    @if (pendingFile()) {
+      <div class="modal-overlay" (click)="cancelUpload()">
+        <div class="modal" (click)="$event.stopPropagation()">
+          <div class="modal-head">
+            <div class="row" style="gap:13px">
+              <span class="modal-ic"><app-icon name="camera" /></span>
+              <div><h2 style="font-size:21px">Ajouter un commentaire</h2></div>
             </div>
+            <button class="modal-close" (click)="cancelUpload()"><app-icon name="close" /></button>
+          </div>
+          <div class="modal-body">
+            <p class="faint" style="font-size:13px;font-weight:600;margin-bottom:10px">Fichier : {{ pendingFile()?.name }}</p>
+            <textarea class="textarea" [(ngModel)]="captionText" placeholder="Décrivez cette photo (optionnel)…"></textarea>
+          </div>
+          <div class="modal-foot">
+            <button class="btn btn-quiet" (click)="cancelUpload()">Annuler</button>
+            <button class="btn btn-primary" (click)="confirmUpload()"><app-icon name="upload" /> Envoyer</button>
           </div>
         </div>
       </div>
+    }
 
-      <!-- Caption Modal -->
-      <div
-        *ngIf="pendingFile()"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
-      >
-        <div class="bg-white rounded-xl shadow-xl p-6 w-full max-w-md mx-4" (click)="$event.stopPropagation()">
-          <h3 class="text-lg font-semibold text-gray-900 mb-4">Ajouter un commentaire</h3>
-
-          <div class="mb-4">
-            <p class="text-sm text-gray-500 mb-2">Fichier : {{ pendingFile()?.name }}</p>
-            <textarea
-              [(ngModel)]="captionText"
-              placeholder="Décrivez cette photo (optionnel)..."
-              rows="3"
-              class="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
-            ></textarea>
-          </div>
-
-          <div class="flex gap-3 justify-end">
-            <button
-              (click)="cancelUpload()"
-              class="px-4 py-2 text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
-            >
-              Annuler
-            </button>
-            <button
-              (click)="confirmUpload()"
-              class="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition"
-            >
-              Envoyer
-            </button>
-          </div>
-        </div>
+    <!-- Lightbox -->
+    @if (lightboxPhoto()) {
+      <div class="modal-overlay" style="background:rgba(20,16,12,0.92)" (click)="closeLightbox()">
+        <button class="modal-close" style="position:fixed;top:18px;right:18px;color:#fff;font-size:24px;z-index:90" (click)="closeLightbox()"><app-icon name="close" /></button>
+        <button class="btn btn-ghost" style="position:fixed;left:18px;top:50%;transform:translateY(-50%);z-index:90" (click)="previousPhoto($event)"><app-icon name="arrowLeft" /></button>
+        <img [src]="lightboxPhoto()?.url" [alt]="lightboxPhoto()?.caption || 'Photo'"
+             (click)="$event.stopPropagation()"
+             style="max-width:90vw;max-height:84vh;object-fit:contain;border-radius:var(--radius-sm)" />
+        <button class="btn btn-ghost" style="position:fixed;right:18px;top:50%;transform:translateY(-50%);z-index:90" (click)="nextPhoto($event)"><app-icon name="arrowRight" /></button>
       </div>
-
-      <!-- Lightbox -->
-      <div
-        *ngIf="lightboxPhoto()"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-90"
-        (click)="closeLightbox()"
-      >
-        <div class="flex items-center justify-center w-full h-full" (click)="$event.stopPropagation()">
-          <button
-            (click)="previousPhoto()"
-            class="absolute left-4 text-white hover:bg-white/20 p-2 rounded"
-          >
-            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-              <path
-                fill-rule="evenodd"
-                d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
-                clip-rule="evenodd"
-              ></path>
-            </svg>
-          </button>
-
-          <img
-            [src]="lightboxPhoto()?.url"
-            [alt]="lightboxPhoto()?.caption || 'Photo'"
-            class="max-w-4xl max-h-4xl object-contain"
-          />
-
-          <button
-            (click)="nextPhoto()"
-            class="absolute right-4 text-white hover:bg-white/20 p-2 rounded"
-          >
-            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-              <path
-                fill-rule="evenodd"
-                d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-                clip-rule="evenodd"
-              ></path>
-            </svg>
-          </button>
-
-          <button
-            (click)="closeLightbox()"
-            class="absolute top-4 right-4 text-white hover:bg-white/20 p-2 rounded"
-          >
-            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-              <path
-                fill-rule="evenodd"
-                d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                clip-rule="evenodd"
-              ></path>
-            </svg>
-          </button>
-        </div>
-      </div>
-    </div>
+    }
   `,
-  styles: []
 })
 export class PhotosComponent implements OnInit {
   ficheId = input.required<string>();
   private gmbService = inject(GmbService);
+  private toast = inject(ToastService);
 
   uploading = signal(false);
-  uploadSuccess = signal(false);
   uploadError = signal<string>('');
+  drag = signal(false);
   lightboxPhoto = signal<Photo | null>(null);
   allPhotos = signal<Photo[]>([]);
   pendingFile = signal<File | null>(null);
   captionText = '';
 
-  ngOnInit() {
-    this.loadPhotos();
-  }
+  ngOnInit() { this.loadPhotos(); }
 
   private loadPhotos() {
     this.gmbService.getPhotos(this.ficheId()).subscribe({
-      next: (photos) => {
-        this.allPhotos.set(photos);
-      },
-      error: (err) => {
-        console.error('Erreur loading photos:', err);
-      }
+      next: (photos) => this.allPhotos.set(photos),
+      error: (err) => console.error('Erreur chargement photos:', err),
     });
+  }
+
+  onDragOver(e: DragEvent) { e.preventDefault(); this.drag.set(true); }
+  onDrop(e: DragEvent) {
+    e.preventDefault();
+    this.drag.set(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (file) this.queueFile(file);
   }
 
   onFileSelected(event: Event) {
     const input = event.target as HTMLInputElement;
     if (!input.files || input.files.length === 0) return;
-
-    const file = input.files[0];
-
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      this.uploadError.set('Le fichier est trop volumineux (max 5MB)');
-      setTimeout(() => this.uploadError.set(''), 5000);
-      return;
-    }
-
-    // Ouvrir la modale pour ajouter un commentaire
-    this.captionText = '';
-    this.pendingFile.set(file);
+    this.queueFile(input.files[0]);
     input.value = '';
   }
 
-  cancelUpload() {
-    this.pendingFile.set(null);
+  private queueFile(file: File) {
+    if (file.size > 5 * 1024 * 1024) {
+      this.uploadError.set('Le fichier est trop volumineux (max 5 Mo)');
+      setTimeout(() => this.uploadError.set(''), 5000);
+      return;
+    }
     this.captionText = '';
+    this.pendingFile.set(file);
   }
+
+  cancelUpload() { this.pendingFile.set(null); this.captionText = ''; }
 
   confirmUpload() {
     const file = this.pendingFile();
     if (!file) return;
-
     const caption = this.captionText.trim();
     this.pendingFile.set(null);
-
     this.uploading.set(true);
-    this.uploadSuccess.set(false);
     this.uploadError.set('');
 
     this.gmbService.uploadPhoto(this.ficheId(), file, caption || undefined).subscribe({
       next: (photo) => {
         this.uploading.set(false);
-        this.uploadSuccess.set(true);
         this.allPhotos.update(photos => [photo, ...photos]);
-        setTimeout(() => this.uploadSuccess.set(false), 3000);
+        this.toast.show('Photo ajoutée à votre galerie 📸');
       },
       error: (err) => {
         this.uploading.set(false);
         this.uploadError.set(err.error?.error || 'Erreur lors du téléchargement');
         setTimeout(() => this.uploadError.set(''), 5000);
-      }
+      },
     });
-
     this.captionText = '';
   }
 
   deletePhoto(photo: Photo, event: Event) {
     event.stopPropagation();
-
-    if (!confirm('Êtes-vous sûr de vouloir supprimer cette photo?')) return;
-
+    if (!confirm('Êtes-vous sûr de vouloir supprimer cette photo ?')) return;
     this.gmbService.deletePhoto(this.ficheId(), photo.id).subscribe({
       next: () => {
         this.allPhotos.update(photos => photos.filter(p => p.id !== photo.id));
-        if (this.lightboxPhoto()?.id === photo.id) {
-          this.closeLightbox();
-        }
+        if (this.lightboxPhoto()?.id === photo.id) this.closeLightbox();
       },
-      error: (err) => {
-        console.error('Erreur deleting photo:', err);
-        alert('Erreur lors de la suppression');
-      }
+      error: (err) => { console.error('Erreur suppression photo:', err); this.toast.show('Erreur lors de la suppression'); },
     });
   }
 
-  openLightbox(photo: Photo) {
-    this.lightboxPhoto.set(photo);
-  }
+  openLightbox(photo: Photo) { this.lightboxPhoto.set(photo); }
+  closeLightbox() { this.lightboxPhoto.set(null); }
 
-  closeLightbox() {
-    this.lightboxPhoto.set(null);
-  }
-
-  previousPhoto() {
+  previousPhoto(e: Event) {
+    e.stopPropagation();
     const current = this.lightboxPhoto();
     if (!current) return;
-
-    const currentIndex = this.allPhotos().findIndex(p => p.id === current.id);
-    const previousIndex = currentIndex > 0 ? currentIndex - 1 : this.allPhotos().length - 1;
-    this.lightboxPhoto.set(this.allPhotos()[previousIndex]);
+    const idx = this.allPhotos().findIndex(p => p.id === current.id);
+    const prev = idx > 0 ? idx - 1 : this.allPhotos().length - 1;
+    this.lightboxPhoto.set(this.allPhotos()[prev]);
   }
 
-  nextPhoto() {
+  nextPhoto(e: Event) {
+    e.stopPropagation();
     const current = this.lightboxPhoto();
     if (!current) return;
-
-    const currentIndex = this.allPhotos().findIndex(p => p.id === current.id);
-    const nextIndex = currentIndex < this.allPhotos().length - 1 ? currentIndex + 1 : 0;
-    this.lightboxPhoto.set(this.allPhotos()[nextIndex]);
+    const idx = this.allPhotos().findIndex(p => p.id === current.id);
+    const next = idx < this.allPhotos().length - 1 ? idx + 1 : 0;
+    this.lightboxPhoto.set(this.allPhotos()[next]);
   }
 }

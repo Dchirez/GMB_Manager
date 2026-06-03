@@ -1,114 +1,156 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterLink } from '@angular/router';
+import { Router } from '@angular/router';
 import { GmbService, Fiche } from '../../services/gmb.service';
+import { ToastService } from '../../services/toast.service';
+import { IconComponent } from '../../shared/icon.component';
+import { ScoreBarComponent } from '../../shared/score-bar.component';
+import { CountUpComponent } from '../../shared/count-up.component';
+import { categoryEmoji } from '../../shared/score.util';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, IconComponent, ScoreBarComponent, CountUpComponent],
   template: `
-    <main class="max-w-7xl mx-auto px-4 py-8">
-      <h2 class="text-2xl font-bold text-gray-900 mb-6">Mes Fiches Google My Business</h2>
-
-      <div *ngIf="isLoading()" class="text-center py-12">
-        <p class="text-gray-600">Chargement des fiches...</p>
+    <main class="container dash">
+      <div class="dash-hello fade-up">
+        <div>
+          <p class="muted" style="font-weight:700;font-size:15px;margin-bottom:4px">{{ greeting() }} 👋</p>
+          <h1 style="font-size:32px">Vos commerces en un coup d'œil</h1>
+        </div>
+        <button class="btn btn-accent" (click)="addFiche()"><app-icon name="plus" /> Ajouter une fiche</button>
       </div>
 
-      <div *ngIf="!isLoading() && fiches().length === 0" class="text-center py-12">
-        <p class="text-gray-600">Aucune fiche disponible</p>
-      </div>
-
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        <div *ngFor="let fiche of fiches()" class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition">
-          <!-- Fiche Card -->
-          <div class="p-6">
-            <h3 class="text-xl font-bold text-gray-900 mb-2">{{ fiche.nom }}</h3>
-            <p class="text-gray-600 text-sm mb-4">{{ fiche.categorie }}</p>
-
-            <!-- Score Bar -->
-            <div class="mb-4">
-              <div class="flex justify-between items-center mb-2">
-                <span class="text-sm font-medium text-gray-700">Score</span>
-                <span class="text-sm font-bold" [ngClass]="getScoreClass(fiche.score)">
-                  {{ fiche.score }}/100
-                </span>
-              </div>
-              <div class="w-full bg-gray-200 rounded-full h-3">
-                <div
-                  class="h-3 rounded-full transition-all"
-                  [style.width.%]="fiche.score"
-                  [ngClass]="getScoreBarClass(fiche.score)"
-                ></div>
-              </div>
-            </div>
-
-            <!-- Info -->
-            <div class="text-sm text-gray-600 mb-4 space-y-1">
-              <p *ngIf="fiche.adresse"><strong>📍</strong> {{ fiche.adresse }}</p>
-              <p *ngIf="fiche.telephone"><strong>📞</strong> {{ fiche.telephone }}</p>
-            </div>
-
-            <!-- Action Buttons -->
-            <div class="flex flex-col sm:flex-row gap-2">
-              <button
-                [routerLink]="['/fiche', fiche.id]"
-                class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition text-sm"
-              >
-                Détail
-              </button>
-              <button
-                [routerLink]="['/avis', fiche.id]"
-                class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded transition text-sm"
-              >
-                Avis
-              </button>
-              <button
-                [routerLink]="['/publications', fiche.id]"
-                class="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded transition text-sm"
-              >
-                Posts
-              </button>
-            </div>
+      @if (isLoading()) {
+        <div class="center muted" style="padding:60px 0;font-weight:600">Chargement de vos fiches… 🌿</div>
+      } @else {
+        <div class="dash-stats fade-up" style="animation-delay:60ms">
+          <div class="ministat">
+            <span class="ministat-ic" style="background:var(--primary-soft);color:var(--primary-deep)"><app-icon name="grid" /></span>
+            <div><div class="ministat-n">{{ fiches().length }}</div><div class="ministat-l">fiches gérées</div></div>
+          </div>
+          <div class="ministat">
+            <span class="ministat-ic" style="background:var(--accent-soft);color:var(--accent-deep)"><app-icon name="chart" /></span>
+            <div><div class="ministat-n"><app-count-up [value]="avgScore()" /></div><div class="ministat-l">score moyen</div></div>
+          </div>
+          <div class="ministat">
+            <span class="ministat-ic" style="background:var(--tertiary-soft);color:var(--tertiary)"><app-icon name="starFill" /></span>
+            <div><div class="ministat-n"><app-count-up [value]="totalReviews()" /></div><div class="ministat-l">avis reçus</div></div>
+          </div>
+          <div class="ministat">
+            <span class="ministat-ic" style="background:var(--primary-soft);color:var(--primary-deep)"><app-icon name="check" /></span>
+            <div><div class="ministat-n">{{ completeCount() }}</div><div class="ministat-l">fiches complètes</div></div>
           </div>
         </div>
-      </div>
+
+        @if (fiches().length === 0) {
+          <div class="card center" style="padding:48px">
+            <p class="muted" style="font-weight:600">Aucune fiche pour le moment. Connectez votre première fiche Google ✨</p>
+          </div>
+        } @else {
+          <div class="fiches-grid">
+            @for (f of fiches(); track f.id; let i = $index) {
+              <div class="card fiche-card fade-up" [style.animationDelay.ms]="i * 70" (click)="open(f, 'infos')">
+                <div class="fiche-top">
+                  <span class="fiche-emoji" [style.background]="f.score >= 100 ? 'var(--primary-soft)' : 'var(--accent-soft)'">{{ emoji(f) }}</span>
+                  <div class="grow">
+                    <h3 class="fiche-name">{{ f.nom }}</h3>
+                    @if (f.categorie) { <span class="pill pill-muted" style="margin-top:6px">{{ f.categorie }}</span> }
+                  </div>
+                  @if (f.score >= 100) { <span class="fiche-trophy" title="Fiche complète">🏆</span> }
+                </div>
+
+                <div style="margin:18px 0 16px"><app-score-bar [score]="f.score" /></div>
+
+                <div class="fiche-meta">
+                  @if (f.adresse) { <div class="row" style="gap:9px"><app-icon name="pin" style="color:var(--accent);font-size:17px" /><span>{{ f.adresse }}</span></div> }
+                  @if (f.telephone) { <div class="row" style="gap:9px"><app-icon name="phone" style="color:var(--primary);font-size:17px" /><span>{{ f.telephone }}</span></div> }
+                </div>
+
+                @if (needs(f).length > 0) {
+                  <div class="fiche-needs">
+                    <app-icon name="sparkle" style="color:var(--accent-deep)" />
+                    <span>À compléter&nbsp;: {{ needs(f).slice(0,2).join(', ') }}{{ needs(f).length > 2 ? ' +' + (needs(f).length - 2) : '' }}</span>
+                  </div>
+                } @else {
+                  <div class="fiche-needs done">
+                    <app-icon name="check" style="color:var(--primary-deep)" />
+                    <span>Rien à faire, tout est à jour ✨</span>
+                  </div>
+                }
+
+                <div class="fiche-actions" (click)="$event.stopPropagation()">
+                  <button class="btn btn-primary btn-sm grow" (click)="open(f, 'infos')"><app-icon name="edit" /> Gérer</button>
+                  <button class="btn btn-ghost btn-sm" (click)="open(f, 'avis')" title="Avis"><app-icon name="star" /></button>
+                  <button class="btn btn-ghost btn-sm" (click)="open(f, 'photos')" title="Photos"><app-icon name="camera" /></button>
+                </div>
+              </div>
+            }
+
+            <button class="card add-card fade-up" [style.animationDelay.ms]="fiches().length * 70" (click)="addFiche()">
+              <span class="add-plus"><app-icon name="plus" /></span>
+              <span style="font-weight:800;font-size:16px">Ajouter un commerce</span>
+              <span class="faint" style="font-size:13.5px;font-weight:600;text-align:center">Connectez une nouvelle fiche Google en quelques clics</span>
+            </button>
+          </div>
+        }
+      }
     </main>
-  `
+  `,
 })
 export class DashboardComponent implements OnInit {
+  private gmbService = inject(GmbService);
+  private router = inject(Router);
+  private toast = inject(ToastService);
+
   fiches = signal<Fiche[]>([]);
   isLoading = signal(true);
+  totalReviews = signal(0);
 
-  constructor(private gmbService: GmbService) {}
+  avgScore = computed(() => {
+    const f = this.fiches();
+    if (!f.length) return 0;
+    return Math.round(f.reduce((s, x) => s + (x.score || 0), 0) / f.length);
+  });
+  completeCount = computed(() => this.fiches().filter(f => f.score >= 100).length);
 
   ngOnInit(): void {
     this.loadFiches();
+    this.gmbService.getDashboardStats().subscribe({
+      next: (s) => this.totalReviews.set(s?.nombre_total_avis ?? 0),
+      error: () => { /* laisse 0 */ },
+    });
   }
 
   loadFiches(): void {
     this.isLoading.set(true);
     this.gmbService.getFiches().subscribe({
-      next: (fiches) => {
-        this.fiches.set(fiches);
-        this.isLoading.set(false);
-      },
-      error: (error) => {
-        console.error('Erreur lors du chargement des fiches:', error);
-        this.isLoading.set(false);
-      }
+      next: (fiches) => { this.fiches.set(fiches); this.isLoading.set(false); },
+      error: (e) => { console.error('Erreur chargement fiches:', e); this.isLoading.set(false); },
     });
   }
 
-  getScoreClass(score: number): string {
-    if (score >= 70) return 'text-green-600';
-    if (score >= 40) return 'text-orange-600';
-    return 'text-red-600';
+  greeting(): string {
+    const h = new Date().getHours();
+    return h < 12 ? 'Bonjour' : h < 18 ? 'Bel après-midi' : 'Bonsoir';
   }
 
-  getScoreBarClass(score: number): string {
-    if (score >= 70) return 'bg-green-500';
-    if (score >= 40) return 'bg-orange-500';
-    return 'bg-red-500';
+  emoji(f: Fiche) { return categoryEmoji(f.categorie); }
+
+  needs(f: Fiche): string[] {
+    const n: string[] = [];
+    if (!f.site_web) n.push('Site web');
+    if (!f.horaires) n.push('Horaires');
+    if (!f.description) n.push('Description');
+    return n;
+  }
+
+  open(f: Fiche, which: 'infos' | 'avis' | 'photos') {
+    this.router.navigate(['/fiche', f.id], { queryParams: { tab: which } });
+  }
+
+  addFiche() {
+    this.toast.show('Connexion d\'une nouvelle fiche bientôt disponible 🌿');
   }
 }

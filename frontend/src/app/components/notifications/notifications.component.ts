@@ -2,83 +2,50 @@ import { Component, OnInit, OnDestroy, inject, signal, ElementRef, HostListener 
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { GmbService, Notification } from '../../services/gmb.service';
+import { IconComponent } from '../../shared/icon.component';
 
 @Component({
   selector: 'app-notifications',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, IconComponent],
   template: `
-    <div class="relative">
-      <!-- Bell icon with badge -->
-      <button
-        (click)="togglePanel()"
-        class="relative p-2 text-gray-700 hover:bg-gray-100 rounded-lg transition"
-        aria-label="Notifications"
-      >
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-          ></path>
-        </svg>
-
-        <!-- Badge -->
-        <span
-          *ngIf="unreadCount() > 0"
-          class="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white transform translate-x-1/2 -translate-y-1/2 bg-red-600 rounded-full"
-        >
-          {{ unreadCount() }}
-        </span>
+    <div class="profile-wrap">
+      <!-- Cloche + badge -->
+      <button (click)="togglePanel()" class="icon-btn" style="font-size:22px" title="Notifications" aria-label="Notifications">
+        <app-icon name="bell" />
+        @if (unreadCount() > 0) { <span class="badge">{{ unreadCount() }}</span> }
       </button>
 
-      <!-- Dropdown panel -->
-      <div
-        *ngIf="panelOpen()"
-        class="absolute right-0 mt-2 w-80 bg-white border border-gray-300 rounded-lg shadow-lg z-50"
-      >
-        <div class="p-4 border-b border-gray-200">
-          <div class="flex justify-between items-center">
-            <h3 class="font-semibold text-gray-900">Notifications</h3>
-            <button
-              *ngIf="unreadCount() > 0"
-              (click)="markAllAsRead($event)"
-              class="text-sm text-indigo-600 hover:text-indigo-700"
-            >
-              Tout marquer comme lu
-            </button>
+      <!-- Panneau -->
+      @if (panelOpen()) {
+        <div class="profile-menu pop-in" style="width:340px">
+          <div class="row" style="justify-content:space-between;padding:10px 12px 12px">
+            <h3 style="font-size:15.5px;font-family:var(--font-display);font-weight:800">Notifications</h3>
+            @if (unreadCount() > 0) {
+              <button class="pm-plan-link" style="background:var(--primary-soft);color:var(--primary-deep)" (click)="markAllAsRead($event)">Tout marquer comme lu</button>
+            }
           </div>
-        </div>
-
-        <!-- Notifications list -->
-        <div class="max-h-96 overflow-y-auto">
-          <div *ngIf="notifications().length === 0" class="p-4 text-center text-gray-500">
-            Aucune notification
-          </div>
-
-          <div
-            *ngFor="let notif of notifications()"
-            (click)="handleNotifClick(notif)"
-            class="p-4 border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition"
-            [ngClass]="{ 'bg-blue-50': !notif.lu }"
-          >
-            <div class="flex justify-between items-start gap-2">
-              <div class="flex-1">
-                <p class="text-sm font-medium text-gray-900">{{ notif.message }}</p>
-                <p class="text-xs text-gray-500 mt-1">{{ formatDate(notif.created_at) }}</p>
-              </div>
-              <button
-                (click)="markAsRead(notif, $event)"
-                *ngIf="!notif.lu"
-                class="text-xs text-indigo-600 hover:text-indigo-700"
-              >
-                Lire
+          <div class="pm-sep"></div>
+          <div style="max-height:60vh;overflow-y:auto">
+            @if (notifications().length === 0) {
+              <p class="muted center" style="padding:22px 12px;font-size:14px;font-weight:600">Aucune notification 🌿</p>
+            }
+            @for (notif of notifications(); track notif.id) {
+              <button class="pm-item" (click)="handleNotifClick(notif)" style="align-items:flex-start"
+                      [style.background]="!notif.lu ? 'var(--primary-tint)' : 'transparent'">
+                <span class="pm-ic"><app-icon name="bell" /></span>
+                <div class="grow">
+                  <div class="pm-item-t" style="white-space:normal;line-height:1.4">{{ notif.message }}</div>
+                  <div class="pm-item-s">{{ formatDate(notif.created_at) }}</div>
+                </div>
+                @if (!notif.lu) {
+                  <span (click)="markAsRead(notif, $event)" style="font-size:12px;font-weight:800;color:var(--primary-deep)">Lire</span>
+                }
               </button>
-            </div>
+            }
           </div>
         </div>
-      </div>
+      }
     </div>
   `,
   styles: []
