@@ -95,33 +95,41 @@ export class NotificationsComponent implements OnInit, OnDestroy {
     this.panelOpen.update(v => !v);
   }
 
-  markAsRead(notif: Notification, event: Event) {
-    event.stopPropagation();
+  markAsRead(notif: Notification, event?: Event) {
+    event?.stopPropagation();
+    if (notif.lu) return;
+    // Mise à jour optimiste : la notif reste affichée mais passe en « lu »
+    // (fond clair) et le badge décrémente aussitôt. Pas de refetch car
+    // l'endpoint ne renvoie que les non-lues → la notif disparaîtrait.
+    this.notifications.update(list =>
+      list.map(n => n.id === notif.id ? { ...n, lu: true } : n)
+    );
     this.gmbService.markNotificationAsRead(notif.id).subscribe({
-      next: () => {
-        this.loadNotifications();
-      },
       error: (err) => {
         console.error('Erreur marking notification as read:', err);
+        // Rollback en cas d'échec serveur
+        this.notifications.update(list =>
+          list.map(n => n.id === notif.id ? { ...n, lu: false } : n)
+        );
       }
     });
   }
 
   markAllAsRead(event: Event) {
     event.stopPropagation();
+    const previous = this.notifications();
+    this.notifications.update(list => list.map(n => ({ ...n, lu: true })));
     this.gmbService.markAllNotificationsAsRead().subscribe({
-      next: () => {
-        this.notifications.set([]);
-      },
       error: (err) => {
         console.error('Erreur marking all as read:', err);
+        this.notifications.set(previous);
       }
     });
   }
 
   handleNotifClick(notif: Notification) {
+    this.markAsRead(notif);
     if (notif.fiche_id) {
-      this.markAsRead(notif, new Event('click'));
       this.router.navigate(['/fiche', notif.fiche_id]);
       this.panelOpen.set(false);
     }
