@@ -5,17 +5,15 @@ import { IconComponent } from '../../shared/icon.component';
 import { Fiche } from '../../services/gmb.service';
 import { scoreColor } from '../../shared/score.util';
 
-interface Category { id: string; emoji: string; }
-
-const CATEGORIES: Category[] = [
-  { id: 'Boulangerie',         emoji: '🥐' },
-  { id: 'Restaurant',          emoji: '🍽️' },
-  { id: 'Restauration rapide', emoji: '🍟' },
-  { id: 'Coiffeur',            emoji: '✂️' },
-  { id: 'Garage automobile',   emoji: '🔧' },
-  { id: 'Beauté & bien-être',  emoji: '💅' },
-  { id: 'Commerce',            emoji: '🛒' },
-  { id: 'Autre',               emoji: '📍' },
+const CATEGORIES: string[] = [
+  'Boulangerie',
+  'Restaurant',
+  'Restauration rapide',
+  'Coiffeur',
+  'Garage automobile',
+  'Beauté & bien-être',
+  'Commerce',
+  'Autre',
 ];
 
 /** Modale de création d'une fiche / commerce. */
@@ -41,10 +39,9 @@ const CATEGORIES: Category[] = [
           <div class="af-section">
             <div class="appear-label"><app-icon name="grid" style="color:var(--primary)" /> Type de commerce</div>
             <div class="cat-grid">
-              @for (c of categories; track c.id) {
-                <button class="cat-opt" [class.on]="cat === c.id" (click)="cat = c.id">
-                  <span class="cat-emoji">{{ c.emoji }}</span>
-                  <span class="cat-name">{{ c.id }}</span>
+              @for (c of categories; track c) {
+                <button class="cat-opt" [class.on]="cat === c" (click)="cat = c">
+                  <span class="cat-name">{{ c }}</span>
                 </button>
               }
             </div>

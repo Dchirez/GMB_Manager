@@ -7,7 +7,7 @@ import { IconComponent } from '../../shared/icon.component';
 import { ScoreBarComponent } from '../../shared/score-bar.component';
 import { CountUpComponent } from '../../shared/count-up.component';
 import { AddFicheModalComponent } from '../add-fiche-modal/add-fiche-modal.component';
-import { categoryEmoji } from '../../shared/score.util';
+
 
 @Component({
   selector: 'app-dashboard',
@@ -57,7 +57,6 @@ import { categoryEmoji } from '../../shared/score.util';
             @for (f of fiches(); track f.id; let i = $index) {
               <div class="card fiche-card fade-up" [style.animationDelay.ms]="i * 70" (click)="open(f, 'infos')">
                 <div class="fiche-top">
-                  <span class="fiche-emoji" [style.background]="f.score >= 100 ? 'var(--primary-soft)' : 'var(--accent-soft)'">{{ emoji(f) }}</span>
                   <div class="grow">
                     <h3 class="fiche-name">{{ f.nom }}</h3>
                     @if (f.categorie) { <span class="pill pill-muted" style="margin-top:6px">{{ f.categorie }}</span> }
@@ -145,7 +144,7 @@ export class DashboardComponent implements OnInit {
     return h < 12 ? 'Bonjour' : h < 18 ? 'Bel après-midi' : 'Bonsoir';
   }
 
-  emoji(f: Fiche) { return categoryEmoji(f.categorie); }
+
 
   needs(f: Fiche): string[] {
     const n: string[] = [];

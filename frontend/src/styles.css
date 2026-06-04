@@ -379,7 +379,7 @@ h1,h2,h3,h4 { font-family: var(--font-display); line-height: 1.1; color: var(--i
 .fiche-card { cursor: pointer; transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease; }
 .fiche-card:hover { transform: translateY(-5px); box-shadow: 0 1px 2px rgba(46,42,34,0.04), 0 30px 54px -28px rgba(46,42,34,0.24); border-color: color-mix(in srgb, var(--primary) 30%, var(--border)); }
 .fiche-top { display: flex; align-items: flex-start; gap: 14px; }
-.fiche-emoji { width: 50px; height: 50px; border-radius: 15px; display: grid; place-items: center; font-size: 25px; flex-shrink: 0; }
+
 .fiche-name { font-size: 18.5px; line-height: 1.2; }
 .fiche-trophy { font-size: 22px; }
 .fiche-meta { display: flex; flex-direction: column; gap: 9px; font-size: 14px; font-weight: 600; color: var(--ink-soft); margin-bottom: 16px; }
@@ -397,7 +397,7 @@ h1,h2,h3,h4 { font-family: var(--font-display); line-height: 1.1; color: var(--i
 .detail { padding: 28px 0 80px; }
 .back-btn { margin-bottom: 16px; }
 .detail-head { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-bottom: 24px; }
-.detail-emoji { width: 64px; height: 64px; border-radius: 20px; display: grid; place-items: center; font-size: 32px; flex-shrink: 0; }
+
 .view-live { align-self: flex-start; }
 .tabs-bar { margin-bottom: 26px; overflow-x: auto; }
 
@@ -663,7 +663,7 @@ h1,h2,h3,h4 { font-family: var(--font-display); line-height: 1.1; color: var(--i
 .cat-opt { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 8px; border-radius: 13px; border: 1.5px solid var(--border); background: none; cursor: pointer; transition: border-color .15s ease, background .15s ease, transform .15s ease; }
 .cat-opt:hover { border-color: var(--ink-faint); transform: translateY(-2px); }
 .cat-opt.on { border-color: var(--primary); background: var(--primary-tint); }
-.cat-emoji { font-size: 26px; line-height: 1; }
+
 .cat-name { font-weight: 700; font-size: 12px; text-align: center; color: var(--ink); line-height: 1.2; }
 .af-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .af-grid .field.af-full { grid-column: 1 / -1; }

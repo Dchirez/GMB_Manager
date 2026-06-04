@@ -9,7 +9,7 @@ import { PhotosComponent } from '../photos/photos.component';
 import { AvisComponent } from '../avis/avis.component';
 import { PublicationsComponent } from '../publications/publications.component';
 import { IconComponent } from '../../shared/icon.component';
-import { categoryEmoji, scoreColor } from '../../shared/score.util';
+import { scoreColor } from '../../shared/score.util';
 
 type Tab = 'infos' | 'photos' | 'avis' | 'stats' | 'publications';
 
@@ -28,7 +28,6 @@ type Tab = 'infos' | 'photos' | 'avis' | 'stats' | 'publications';
         <button class="btn btn-quiet back-btn fade-up" (click)="back()"><app-icon name="arrowLeft" /> Mes commerces</button>
 
         <div class="detail-head fade-up" style="animation-delay:40ms">
-          <span class="detail-emoji" [style.background]="f.score >= 100 ? 'var(--primary-soft)' : 'var(--accent-soft)'">{{ emoji() }}</span>
           <div class="grow">
             <h1 style="font-size:28px">{{ f.nom }}</h1>
             <div class="row" style="gap:12px;margin-top:8px;flex-wrap:wrap">
@@ -182,7 +181,7 @@ export class FicheDetailComponent implements OnInit {
     });
   }
 
-  emoji() { return categoryEmoji(this.fiche()?.categorie); }
+
 
   // Complétude live calculée à partir du formulaire (recalcul à chaque CD).
   liveScore(): number {
