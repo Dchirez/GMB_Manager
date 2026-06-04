@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { IconComponent } from '../../shared/icon.component';
 import { Fiche } from '../../services/gmb.service';
 import { scoreColor } from '../../shared/score.util';
-import { CATEGORIES } from '../../shared/category.util';
+import { CATEGORY_NAMES } from '../../shared/category.util';
 
 /** Modale de création d'une fiche / commerce. */
 @Component({
@@ -29,10 +29,9 @@ import { CATEGORIES } from '../../shared/category.util';
           <div class="af-section">
             <div class="appear-label"><app-icon name="grid" style="color:var(--primary)" /> Type de commerce</div>
             <div class="cat-grid">
-              @for (c of categories; track c.id) {
-                <button class="cat-opt" [class.on]="cat === c.id" (click)="cat = c.id">
-                  <span class="cat-emoji">{{ c.emoji }}</span>
-                  <span class="cat-name">{{ c.id }}</span>
+              @for (c of categories; track c) {
+                <button class="cat-opt" [class.on]="cat === c" (click)="cat = c">
+                  <span class="cat-name">{{ c }}</span>
                 </button>
               }
             </div>
@@ -91,7 +90,7 @@ export class AddFicheModalComponent {
   @Output() close = new EventEmitter<void>();
   @Output() created = new EventEmitter<Fiche>();
 
-  categories = CATEGORIES;
+  categories = CATEGORY_NAMES;
   cat = '';
   name = ''; address = ''; phone = ''; website = ''; hours = ''; description = '';
 

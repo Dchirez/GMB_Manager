@@ -1,23 +1,11 @@
-/** Catégories de commerce + emoji associé (repris du prototype Design). */
-export interface Category {
-  id: string;
-  emoji: string;
-}
-
-export const CATEGORIES: Category[] = [
-  { id: 'Boulangerie', emoji: '🥐' },
-  { id: 'Restaurant', emoji: '🍽️' },
-  { id: 'Restauration rapide', emoji: '🍟' },
-  { id: 'Coiffeur', emoji: '✂️' },
-  { id: 'Garage automobile', emoji: '🔧' },
-  { id: 'Beauté & bien-être', emoji: '💅' },
-  { id: 'Commerce', emoji: '🛒' },
-  { id: 'Autre', emoji: '📍' },
+/** Noms des catégories de commerce disponibles. */
+export const CATEGORY_NAMES: string[] = [
+  'Boulangerie',
+  'Restaurant',
+  'Restauration rapide',
+  'Coiffeur',
+  'Garage automobile',
+  'Beauté & bien-être',
+  'Commerce',
+  'Autre',
 ];
-
-/** Emoji d'une catégorie (insensible à la casse). Fallback : 📍 (Autre). */
-export function categoryEmoji(category?: string | null): string {
-  if (!category) return '📍';
-  const match = CATEGORIES.find(c => c.id.toLowerCase() === category.trim().toLowerCase());
-  return match?.emoji ?? '📍';
-}
