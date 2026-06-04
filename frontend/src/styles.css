@@ -416,6 +416,66 @@ h1,h2,h3,h4 { font-family: var(--font-display); line-height: 1.1; color: var(--i
 .form-grid .field.full { grid-column: 1 / -1; }
 .field-done { width: 19px; height: 19px; border-radius: 50%; background: var(--primary); color: #fff; display: grid; place-items: center; font-size: 12px; margin-left: auto; animation: popIn .3s ease both; }
 .form-foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--border-soft); }
+/* center action that sits between the reassurance note and the save button */
+.form-foot .foot-center { margin: 0 auto; }
+.ticket-link { white-space: nowrap; }
+
+/* ---------- Ticket / demande de modification ---------- */
+.ticket { padding: 28px 0 90px; max-width: 880px; }
+.ticket-head { display: flex; align-items: flex-start; gap: 18px; flex-wrap: wrap; margin-bottom: 22px; }
+.ticket-head-ic { width: 52px; height: 52px; border-radius: 16px; background: var(--accent-soft); color: var(--accent-deep); display: grid; place-items: center; font-size: 25px; flex-shrink: 0; }
+.ticket-fiche { display: flex; flex-direction: column; align-items: flex-end; text-align: right; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: 0 12px 28px -24px rgba(46,42,34,0.22); }
+.ticket-fiche-l { font-size: 11.5px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; color: var(--ink-faint); }
+.ticket-fiche-n { font-family: var(--font-display); font-weight: 800; font-size: 16.5px; margin-top: 2px; white-space: nowrap; }
+
+.ticket-card { padding: 28px; }
+.tk-block { padding: 22px 0; border-bottom: 1px solid var(--border-soft); }
+.tk-block:first-child { padding-top: 4px; }
+.tk-block:last-of-type { border-bottom: none; padding-bottom: 4px; }
+.tk-label { font-size: 16px; display: flex; align-items: center; gap: 9px; margin-bottom: 12px; }
+.tk-opt { font-size: 11.5px; font-weight: 700; color: var(--ink-faint); background: var(--bg-tint); padding: 2px 9px; border-radius: 999px; letter-spacing: .02em; }
+.tk-help { font-size: 13.5px; font-weight: 600; color: var(--ink-soft); margin: -4px 0 12px; }
+
+.req-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.req-card { position: relative; text-align: left; display: flex; flex-direction: column; gap: 3px; padding: 16px 16px 15px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); cursor: pointer; transition: border-color .18s ease, background .18s ease, transform .18s ease; }
+.req-card:hover { border-color: color-mix(in srgb, var(--primary) 35%, var(--border)); transform: translateY(-2px); }
+.req-card.active { border-color: var(--primary); background: var(--primary-tint); }
+.req-ic { width: 38px; height: 38px; border-radius: 11px; background: var(--bg-tint); color: var(--ink-soft); display: grid; place-items: center; font-size: 19px; margin-bottom: 8px; transition: background .18s ease, color .18s ease; }
+.req-card.active .req-ic { background: var(--primary-soft); color: var(--primary-deep); }
+.req-t { font-weight: 800; font-size: 14.5px; }
+.req-d { font-size: 12.5px; font-weight: 600; color: var(--ink-soft); }
+.req-check { position: absolute; top: 13px; right: 13px; width: 20px; height: 20px; border-radius: 50%; background: var(--primary); color: #fff; display: grid; place-items: center; font-size: 12px; opacity: 0; transform: scale(.5); transition: opacity .18s ease, transform .18s ease; }
+.req-card.active .req-check { opacity: 1; transform: scale(1); }
+
+.area-chips { display: flex; flex-wrap: wrap; gap: 9px; }
+.area-chip { display: inline-flex; align-items: center; gap: 5px; padding: 8px 15px; border-radius: 999px; border: 1.5px solid var(--border); background: var(--surface); font-weight: 700; font-size: 13.5px; color: var(--ink-soft); cursor: pointer; transition: all .16s ease; }
+.area-chip:hover { border-color: color-mix(in srgb, var(--primary) 35%, var(--border)); color: var(--ink); }
+.area-chip.on { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-deep); }
+
+.tk-textarea { min-height: 130px; }
+.tk-counter { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; }
+.tk-counter .ok { color: var(--primary-deep); }
+
+.seg-btn { padding: 9px 18px; border-radius: 999px; font-weight: 700; font-size: 13.5px; color: var(--ink-soft); border: none; background: none; cursor: pointer; transition: all .16s ease; white-space: nowrap; }
+.seg-btn:hover { color: var(--ink); }
+.seg-btn.on { background: var(--surface); color: var(--ink); box-shadow: 0 4px 12px -6px rgba(46,42,34,0.25); }
+.seg-btn.urgent.on { background: var(--accent); color: #fff; }
+
+/* Ticket photo upload */
+.tk-drop { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 26px 20px; border: 2px dashed var(--border); border-radius: var(--radius-sm); background: var(--bg-tint); cursor: pointer; transition: border-color .18s ease, background .18s ease; }
+.tk-drop:hover, .tk-drop.dragging { border-color: var(--primary); background: var(--primary-tint); }
+.tk-drop-ic { width: 44px; height: 44px; border-radius: 13px; background: var(--surface); color: var(--primary-deep); display: grid; place-items: center; font-size: 22px; margin-bottom: 4px; box-shadow: 0 6px 16px -10px rgba(46,42,34,0.3); }
+.tk-drop-t { font-weight: 700; font-size: 14.5px; color: var(--ink); }
+.tk-drop-s { font-size: 12.5px; font-weight: 600; color: var(--ink-faint); }
+
+.tk-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 12px; }
+.tk-photo { position: relative; aspect-ratio: 1; border-radius: 14px; overflow: hidden; border: 1px solid var(--border); background: var(--bg-tint); }
+.tk-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tk-photo-del { position: absolute; top: 6px; right: 6px; width: 26px; height: 26px; border-radius: 50%; background: rgba(28,24,18,0.62); color: #fff; display: grid; place-items: center; font-size: 14px; border: none; cursor: pointer; backdrop-filter: blur(4px); transition: background .15s ease, transform .15s ease; }
+.tk-photo-del:hover { background: var(--accent); transform: scale(1.08); }
+.tk-addphoto { aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border: 2px dashed var(--border); border-radius: 14px; background: transparent; color: var(--ink-soft); font-weight: 700; font-size: 13px; cursor: pointer; transition: border-color .18s ease, color .18s ease, background .18s ease; }
+.tk-addphoto:hover { border-color: var(--primary); color: var(--primary-deep); background: var(--primary-tint); }
+.tk-addphoto svg { font-size: 20px; }
 
 /* ---------- Photos ---------- */
 .photos-empty { text-align: center; display: flex; flex-direction: column; align-items: center; padding: 56px 30px; border-style: dashed; border-width: 2px; transition: border-color .2s ease, background .2s ease; }

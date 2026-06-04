@@ -119,6 +119,9 @@ type Tab = 'infos' | 'photos' | 'avis' | 'stats' | 'publications';
                     <span class="row faint" style="gap:8px;font-size:13.5px;font-weight:600">
                       <app-icon name="check" style="color:var(--primary)" /> Vos modifications sont enregistrées en sécurité
                     </span>
+                    <button class="btn btn-ghost ticket-link foot-center" (click)="requestChange()">
+                      <app-icon name="message" /> Demander une modification
+                    </button>
                     <button class="btn btn-primary" [disabled]="isSaving()" (click)="save()">
                       <app-icon name="check" /> {{ isSaving() ? 'Enregistrement…' : 'Enregistrer les modifications' }}
                     </button>
@@ -207,6 +210,8 @@ export class FicheDetailComponent implements OnInit {
   }
 
   back() { this.router.navigate(['/dashboard']); }
+
+  requestChange() { this.router.navigate(['/fiche', this.ficheId, 'demande']); }
 
   save(): void {
     const f = this.fiche();

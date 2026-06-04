@@ -118,6 +118,13 @@ import { CommonModule } from '@angular/common';
         @case ('caret') {
           <path fill="none" [attr.stroke]="cur" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/>
         }
+        @case ('message') {
+          <path fill="none" [attr.stroke]="cur" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" d="M5 5h14a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 19 16H9l-4 3.5V6.5A1.5 1.5 0 0 1 5 5Z"/>
+        }
+        @case ('send') {
+          <path fill="none" [attr.stroke]="cur" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" d="M21 4L3 11l6.5 2.5L12 20l3-6 6-10Z"/>
+          <path fill="none" [attr.stroke]="cur" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" d="M9.5 13.5 21 4"/>
+        }
       }
     </svg>
   `,
