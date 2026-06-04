@@ -30,6 +30,30 @@ export class AuthService {
     return !!this.getToken();
   }
 
+  // Décode le payload du JWT (sans vérif de signature — usage UX uniquement,
+  // l'autorisation réelle est faite côté backend).
+  private decodeToken(): any | null {
+    const token = this.getToken();
+    if (!token) return null;
+    try {
+      const payload = token.split('.')[1];
+      if (!payload) return null;
+      return JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+    } catch {
+      return null;
+    }
+  }
+
+  // Rôle applicatif pour le routing front. Défaute à 'client' si le claim est
+  // absent (ex. anciens JWT émis avant l'ajout du rôle) — jamais 'admin' par défaut.
+  getRole(): 'admin' | 'client' {
+    return this.decodeToken()?.role === 'admin' ? 'admin' : 'client';
+  }
+
+  isAdmin(): boolean {
+    return this.getRole() === 'admin';
+  }
+
   logout(): void {
     localStorage.removeItem('auth_token');
   }

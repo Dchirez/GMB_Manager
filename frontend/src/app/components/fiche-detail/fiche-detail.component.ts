@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { GmbService, Fiche } from '../../services/gmb.service';
 import { ToastService } from '../../services/toast.service';
+import { AuthService } from '../../services/auth.service';
 import { StatsComponent } from '../stats/stats.component';
 import { PhotosComponent } from '../photos/photos.component';
 import { AvisComponent } from '../avis/avis.component';
@@ -26,7 +27,7 @@ type Tab = 'infos' | 'photos' | 'avis' | 'stats' | 'publications';
       @if (isLoading()) {
         <div class="center muted" style="padding:60px 0;font-weight:600">Chargement de la fiche…</div>
       } @else if (fiche(); as f) {
-        <button class="btn btn-quiet back-btn fade-up" (click)="back()"><app-icon name="arrowLeft" /> Mes commerces</button>
+        <button class="btn btn-quiet back-btn fade-up" (click)="back()"><app-icon name="arrowLeft" /> {{ backLabel() }}</button>
 
         <div class="detail-head fade-up" style="animation-delay:40ms">
           <div class="grow">
@@ -145,6 +146,7 @@ export class FicheDetailComponent implements OnInit {
   private router = inject(Router);
   private gmbService = inject(GmbService);
   private toast = inject(ToastService);
+  private auth = inject(AuthService);
 
   fiche = signal<Fiche | null>(null);
   isLoading = signal(true);
@@ -208,7 +210,9 @@ export class FicheDetailComponent implements OnInit {
     return /^https?:\/\//i.test(url) ? url : `https://${url}`;
   }
 
-  back() { this.router.navigate(['/dashboard']); }
+  backLabel() { return this.auth.isAdmin() ? 'Tous les commerces' : 'Mon commerce'; }
+
+  back() { this.router.navigate([this.auth.isAdmin() ? '/dashboard' : '/mon-commerce']); }
 
   requestChange() { this.router.navigate(['/fiche', this.ficheId, 'demande']); }
 

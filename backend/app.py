@@ -16,7 +16,8 @@ from routes.stats import stats_bp
 from routes.notifications import notifications_bp, generate_notifications
 from routes.photos import photos_bp
 from routes.tickets import tickets_bp
-from utils.decorators import token_required
+from routes.admin import admin_bp
+from utils.decorators import token_required, accessible_fiche
 
 # SECURITY FIX [CWE-770]: rate limiting
 try:
@@ -195,6 +196,23 @@ if not _frontend_url:
         raise RuntimeError("FRONTEND_URL is required in production (strict CORS)")
     _frontend_url = 'http://localhost:4200'
 
+# Allowlist d'emails admin (prestataire). Le rôle est (re)positionné à chaque login
+# à partir de cette liste — pas de migration de données manuelle, survit aux resets DB.
+# Format : emails séparés par des virgules. Défaut : le compte du propriétaire du projet.
+_admin_emails = {
+    e.strip().lower()
+    for e in os.getenv('ADMIN_EMAILS', 'dchirez59@gmail.com').split(',')
+    if e.strip()
+}
+
+
+def resolve_role(email):
+    """Détermine le rôle applicatif d'un utilisateur depuis l'allowlist ADMIN_EMAILS."""
+    if email and email.strip().lower() in _admin_emails:
+        return 'admin'
+    return 'client'
+
+
 CORS(app, resources={
     r"/api/*": {
         "origins": [_frontend_url],
@@ -245,6 +263,7 @@ app.register_blueprint(stats_bp, url_prefix='/api/stats')
 app.register_blueprint(notifications_bp, url_prefix='/api/notifications')
 app.register_blueprint(photos_bp, url_prefix='/api/photos')
 app.register_blueprint(tickets_bp, url_prefix='/api/tickets')
+app.register_blueprint(admin_bp, url_prefix='/api/admin')
 
 # Health check endpoint
 @app.route('/health', methods=['GET'])
@@ -421,42 +440,42 @@ def auth_callback():
         else:
             logger.info(f"Google ID extracted: {google_id}")
 
+        # Rôle dérivé de l'allowlist ADMIN_EMAILS (source de vérité côté serveur).
+        role = resolve_role(email)
+
         # Store or update user in database
         user = User.query.filter_by(google_id=google_id).first()
         if not user:
-            logger.info(f"Creating new user: {email} (google_id={google_id})")
+            logger.info(f"Creating new user: {email} (google_id={google_id}, role={role})")
             user = User(
                 google_id=google_id,
                 email=email,
                 name=name,
-                google_access_token=access_token
+                google_access_token=access_token,
+                role=role,
             )
             db.session.add(user)
             db.session.commit()
-
-            # Create demo fiches + avis for new user
-            logger.info(f"Creating demo fiches and avis for {email}")
-            create_demo_fiches_and_avis(user.id)
+            # NOTE: plus d'auto-seed de fiches démo (pollue le dashboard admin global).
+            # Le seeding démo reste disponible manuellement (seed.py / POST /api/seed-demo-fiches).
         else:
-            logger.info(f"Updating existing user: {email}")
+            logger.info(f"Updating existing user: {email} (role={role})")
             user.google_access_token = access_token
+            # Re-synchronise le rôle à chaque login pour refléter ADMIN_EMAILS.
+            user.role = role
             db.session.commit()
-
-            # Créer les fiches démo + avis si l'utilisateur n'en a aucune en BDD
-            existing_fiches = Fiche.query.filter_by(user_id=user.id).first()
-            if not existing_fiches:
-                logger.info(f"Creating demo fiches and avis for existing user {email} (none found in DB)")
-                create_demo_fiches_and_avis(user.id)
-                logger.info(f"Created 4 demo fiches with avis for existing user {email}")
 
         # SECURITY FIX [CWE-613]: JWT with exp/iat/nbf, short lifetime
         # SECURITY FIX [CWE-522]: google_access_token is NOT included in JWT anymore;
         # it is stored in DB (User.google_access_token) and loaded server-side.
+        # Le claim 'role' sert uniquement à l'UX frontend (routing) ; l'autorisation
+        # backend se base toujours sur User.role en base (cf. @admin_required).
         now = datetime.now(timezone.utc)
         jwt_token = jwt.encode({
             'user_id': user.id,
             'email': email,
             'name': name,
+            'role': user.role,
             'iat': now,
             'nbf': now,
             'exp': now + timedelta(hours=1),
@@ -477,10 +496,14 @@ def auth_me():
     """
     Retourne les informations de l'utilisateur authentifié
     """
+    # Rôle/abonnement lus en base (source de vérité), pas depuis le JWT.
+    user = User.query.filter_by(id=request.user.get('user_id')).first()
     return jsonify({
         'user_id': request.user.get('user_id'),
         'email': request.user.get('email'),
-        'name': request.user.get('name')
+        'name': request.user.get('name'),
+        'role': user.role if user else 'client',
+        'is_active': user.is_active if user else True,
     }), 200
 
 @app.route('/auth/account', methods=['DELETE'])
@@ -611,9 +634,9 @@ def get_fiche(fiche_id):
     """Retourne une fiche spécifique"""
     user_id = request.user.get('user_id')
 
-    # Cherche en BDD d'abord
+    # Cherche en BDD d'abord (admin-aware : l'admin accède à toute fiche)
     try:
-        fiche = Fiche.query.filter_by(id=fiche_id, user_id=user_id).first()
+        fiche = accessible_fiche(fiche_id, user_id)
         if fiche:
             return jsonify(fiche.to_dict()), 200
     except Exception as e:
@@ -639,10 +662,10 @@ def update_fiche(fiche_id):
         if v is not None and (not isinstance(v, str) or len(v) > 2000):
             return _safe_error('Invalid field', 400)
 
-    # SECURITY FIX [CWE-639/CWE-668]: only update rows owned by the user.
-    # No in-memory demo fallback — that global dict was shared across users.
+    # SECURITY FIX [CWE-639/CWE-668]: only update rows owned by the user
+    # (admin-aware : l'admin peut éditer n'importe quelle fiche client).
     try:
-        fiche = Fiche.query.filter_by(id=fiche_id, user_id=user_id).first()
+        fiche = accessible_fiche(fiche_id, user_id)
         if not fiche:
             return _safe_error('Fiche not found', 404)
 
@@ -738,7 +761,7 @@ def get_avis(fiche_id):
 
     # SECURITY FIX [CWE-639]: enforce fiche ownership before returning any avis
     user_id = request.user.get('user_id')
-    owned_fiche = Fiche.query.filter_by(id=fiche_id, user_id=user_id).first()
+    owned_fiche = accessible_fiche(fiche_id, user_id)
     if not owned_fiche:
         return _safe_error('Fiche not found', 404)
 
@@ -791,7 +814,7 @@ def post_reponse(fiche_id, avis_id):
 
     # SECURITY FIX [CWE-639]: enforce ownership of the parent fiche
     user_id = request.user.get('user_id')
-    owned_fiche = Fiche.query.filter_by(id=fiche_id, user_id=user_id).first()
+    owned_fiche = accessible_fiche(fiche_id, user_id)
     if not owned_fiche:
         return _safe_error('Fiche not found', 404)
 
@@ -816,7 +839,7 @@ def get_publications(fiche_id):
     """Retourne la liste des publications pour une fiche"""
     # SECURITY FIX [CWE-639]: enforce fiche ownership
     user_id = request.user.get('user_id')
-    owned_fiche = Fiche.query.filter_by(id=fiche_id, user_id=user_id).first()
+    owned_fiche = accessible_fiche(fiche_id, user_id)
     if not owned_fiche:
         return _safe_error('Fiche not found', 404)
 
@@ -835,7 +858,7 @@ def create_publication(fiche_id):
 
     # SECURITY FIX [CWE-639]: enforce fiche ownership before any DB/Storage write
     user_id = request.user.get('user_id')
-    owned_fiche = Fiche.query.filter_by(id=fiche_id, user_id=user_id).first()
+    owned_fiche = accessible_fiche(fiche_id, user_id)
     if not owned_fiche:
         return _safe_error('Fiche not found', 404)
 
@@ -982,6 +1005,20 @@ def run_migrations():
             db.session.execute(text('ALTER TABLE publications ADD COLUMN image_filename VARCHAR(255)'))
             db.session.commit()
             logger.info("✓ Migration: added image_url and image_filename to publications")
+
+        # Migration 3: role + is_active on users (séparation admin/client)
+        if not _column_exists('users', 'role'):
+            db.session.execute(text(
+                "ALTER TABLE users ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'client'"
+            ))
+            db.session.commit()
+            logger.info("✓ Migration: added role to users")
+        if not _column_exists('users', 'is_active'):
+            db.session.execute(text(
+                "ALTER TABLE users ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE"
+            ))
+            db.session.commit()
+            logger.info("✓ Migration: added is_active to users")
 
     except Exception as e:
         db.session.rollback()

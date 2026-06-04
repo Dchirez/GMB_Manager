@@ -23,6 +23,12 @@ class User(db.Model):
     name = db.Column(db.String(255), nullable=False)
     google_access_token = db.Column(EncryptedText, nullable=True)
     google_refresh_token = db.Column(EncryptedText, nullable=True)
+    # Rôle applicatif : 'admin' (prestataire, voit toutes les fiches) ou 'client'
+    # (commerçant, voit uniquement les siennes). La valeur fait foi côté backend ;
+    # le claim équivalent dans le JWT ne sert qu'à l'UX frontend.
+    role = db.Column(db.String(20), nullable=False, default='client')
+    # Statut d'abonnement du client (flag simple, évolutif vers une table dédiée).
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     # Relationships
@@ -33,6 +39,8 @@ class User(db.Model):
             'user_id': self.google_id,
             'email': self.email,
             'name': self.name,
+            'role': self.role,
+            'is_active': self.is_active,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 

@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify
 from models import db, Fiche, Avis, User
-from utils.decorators import token_required
+from utils.decorators import token_required, accessible_fiche
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ def get_avis_stats(fiche_id):
     """
     # SECURITY FIX [CWE-639]: enforce fiche ownership before exposing stats
     user_id = request.user.get('user_id')
-    owned = Fiche.query.filter_by(id=fiche_id, user_id=user_id).first()
+    owned = accessible_fiche(fiche_id, user_id)
     if not owned:
         return jsonify({'error': 'Fiche not found'}), 404
 

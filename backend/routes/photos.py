@@ -6,7 +6,7 @@ import os
 from flask import Blueprint, request, jsonify
 import requests
 from models import db, Photo, User, Fiche
-from utils.decorators import token_required
+from utils.decorators import token_required, accessible_fiche
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ def get_photos(fiche_id):
         if not user:
             return jsonify({'error': 'User not found'}), 404
 
-        fiche = Fiche.query.filter_by(id=fiche_id, user_id=user.id).first()
+        fiche = accessible_fiche(fiche_id, user.id)
         if not fiche:
             return jsonify({'error': 'Fiche not found'}), 404
 
@@ -53,7 +53,7 @@ def upload_photo(fiche_id):
         if not user:
             return jsonify({'error': 'User not found'}), 404
 
-        fiche = Fiche.query.filter_by(id=fiche_id, user_id=user.id).first()
+        fiche = accessible_fiche(fiche_id, user.id)
         if not fiche:
             return jsonify({'error': 'Fiche not found'}), 404
 
@@ -162,7 +162,7 @@ def delete_photo(fiche_id, photo_id):
         if not user:
             return jsonify({'error': 'User not found'}), 404
 
-        fiche = Fiche.query.filter_by(id=fiche_id, user_id=user.id).first()
+        fiche = accessible_fiche(fiche_id, user.id)
         if not fiche:
             return jsonify({'error': 'Fiche not found'}), 404
 

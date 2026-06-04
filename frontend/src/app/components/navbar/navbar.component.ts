@@ -163,7 +163,11 @@ export class NavbarComponent implements OnInit {
   @HostListener('document:keydown.escape')
   onEsc() { this.menuOpen.set(false); }
 
-  goDashboard() { this.router.navigate(['/dashboard']); }
+  // Le logo ramène à l'accueil propre au rôle : dashboard global pour l'admin,
+  // espace commerce pour le client.
+  goDashboard() {
+    this.router.navigate([this.authService.isAdmin() ? '/dashboard' : '/mon-commerce']);
+  }
 
   openSettings() { this.menuOpen.set(false); this.showSettings.set(true); }
   openPlan() { this.menuOpen.set(false); this.showPlan.set(true); }

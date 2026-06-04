@@ -15,6 +15,28 @@ export interface Fiche {
   score: number;
 }
 
+export interface AdminClient {
+  user_id: number | null;
+  nom: string | null;
+  email: string | null;
+  is_active: boolean | null;
+}
+
+export interface AdminFiche extends Fiche {
+  client: AdminClient;
+  total_avis: number;
+  avis_sans_reponse: number;
+}
+
+export interface AdminStats {
+  nombre_clients: number;
+  nombre_clients_actifs: number;
+  nombre_fiches: number;
+  score_moyen: number;
+  nombre_total_avis: number;
+  avis_en_attente: number;
+}
+
 export interface Avis {
   id: string;
   auteur: string;
@@ -198,6 +220,27 @@ export class GmbService {
     return this.http.put<Fiche>(`${this.apiUrl}/gmb/fiches/${id}`, fiche).pipe(
       tap(data => this.setCache(`fiche_${id}`, data))
     );
+  }
+
+  // ==================== ADMIN ====================
+  // (pas de cache — le prestataire veut toujours une vue fraîche)
+
+  getAdminFiches(): Observable<AdminFiche[]> {
+    return this.http.get<AdminFiche[]>(`${this.apiUrl}/admin/fiches`);
+  }
+
+  getAdminFiche(id: string): Observable<AdminFiche> {
+    return this.http.get<AdminFiche>(`${this.apiUrl}/admin/fiches/${id}`);
+  }
+
+  updateAdminFiche(id: string, fiche: Partial<Fiche>): Observable<AdminFiche> {
+    this.clearCache(`fiche_${id}`);
+    this.clearCache('fiches');
+    return this.http.put<AdminFiche>(`${this.apiUrl}/admin/fiches/${id}`, fiche);
+  }
+
+  getAdminStats(): Observable<AdminStats> {
+    return this.http.get<AdminStats>(`${this.apiUrl}/admin/stats`);
   }
 
   // ==================== AVIS ====================

@@ -7,7 +7,7 @@ import logging
 import os
 from flask import Blueprint, request, jsonify
 from models import db, User, Fiche, Ticket
-from utils.decorators import token_required
+from utils.decorators import token_required, accessible_fiche
 from services.email_service import send_email
 
 logger = logging.getLogger(__name__)
@@ -44,7 +44,7 @@ def create_ticket(fiche_id):
         user = User.query.filter_by(id=user_id).first()
         if not user:
             return jsonify({'error': 'User not found'}), 404
-        fiche = Fiche.query.filter_by(id=fiche_id, user_id=user.id).first()
+        fiche = accessible_fiche(fiche_id, user.id)
         if not fiche:
             return jsonify({'error': 'Fiche not found'}), 404
 

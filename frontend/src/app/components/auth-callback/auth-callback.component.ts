@@ -48,7 +48,9 @@ export class AuthCallbackComponent implements OnInit {
       this.authService.setToken(token);
       // Clear fragment from URL history
       try { history.replaceState(null, '', window.location.pathname); } catch {}
-      this.router.navigate(['/dashboard']);
+      // Redirection selon le rôle : admin -> dashboard global, client -> son espace.
+      const target = this.authService.isAdmin() ? '/dashboard' : '/mon-commerce';
+      this.router.navigate([target]);
     } else {
       this.router.navigate(['/login']);
     }

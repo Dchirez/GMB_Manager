@@ -125,6 +125,10 @@ import { CommonModule } from '@angular/common';
           <path fill="none" [attr.stroke]="cur" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" d="M21 4L3 11l6.5 2.5L12 20l3-6 6-10Z"/>
           <path fill="none" [attr.stroke]="cur" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" d="M9.5 13.5 21 4"/>
         }
+        @case ('user') {
+          <circle fill="none" [attr.stroke]="cur" stroke-width="1.9" cx="12" cy="8" r="3.6"/>
+          <path fill="none" [attr.stroke]="cur" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" d="M5 20a7 7 0 0 1 14 0"/>
+        }
       }
     </svg>
   `,

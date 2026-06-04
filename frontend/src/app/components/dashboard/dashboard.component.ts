@@ -1,85 +1,122 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { GmbService, Fiche } from '../../services/gmb.service';
-import { ToastService } from '../../services/toast.service';
+import { GmbService, AdminFiche, AdminStats } from '../../services/gmb.service';
 import { IconComponent } from '../../shared/icon.component';
 import { ScoreBarComponent } from '../../shared/score-bar.component';
 import { CountUpComponent } from '../../shared/count-up.component';
-import { AddFicheModalComponent } from '../add-fiche-modal/add-fiche-modal.component';
 
 
+type ScoreBucket = 'all' | 'low' | 'mid' | 'full';
+
+/**
+ * Dashboard ADMIN (prestataire) : vue globale de toutes les fiches de tous les
+ * clients, avec stats globales et filtres (client, score, catégorie).
+ * Protégé côté route par adminGuard ; les données viennent des endpoints
+ * /api/admin/* (eux-mêmes protégés par @admin_required côté backend).
+ */
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [
-    CommonModule, IconComponent, ScoreBarComponent, CountUpComponent,
-    AddFicheModalComponent,
-  ],
+  imports: [CommonModule, FormsModule, IconComponent, ScoreBarComponent, CountUpComponent],
   template: `
     <main class="container dash">
       <div class="dash-hello fade-up">
         <div>
-          <p class="muted" style="font-weight:700;font-size:15px;margin-bottom:4px">{{ greeting() }} 👋</p>
-          <h1 style="font-size:32px">Vos commerces en un coup d'œil</h1>
+          <p class="muted" style="font-weight:700;font-size:15px;margin-bottom:4px">Espace gestionnaire</p>
+          <h1 style="font-size:32px">Toutes les fiches de vos clients</h1>
         </div>
-        <button class="btn btn-accent" (click)="addFiche()"><app-icon name="plus" /> Ajouter une fiche</button>
       </div>
 
       @if (isLoading()) {
-        <div class="center muted" style="padding:60px 0;font-weight:600">Chargement de vos fiches… 🌿</div>
+        <div class="center muted" style="padding:60px 0;font-weight:600">Chargement des fiches…</div>
       } @else {
         <div class="dash-stats fade-up" style="animation-delay:60ms">
           <div class="ministat">
             <span class="ministat-ic" style="background:var(--primary-soft);color:var(--primary-deep)"><app-icon name="grid" /></span>
-            <div><div class="ministat-n">{{ fiches().length }}</div><div class="ministat-l">fiches gérées</div></div>
+            <div><div class="ministat-n">{{ stats()?.nombre_fiches ?? fiches().length }}</div><div class="ministat-l">fiches gérées</div></div>
           </div>
           <div class="ministat">
-            <span class="ministat-ic" style="background:var(--accent-soft);color:var(--accent-deep)"><app-icon name="chart" /></span>
-            <div><div class="ministat-n"><app-count-up [value]="avgScore()" /></div><div class="ministat-l">score moyen</div></div>
+            <span class="ministat-ic" style="background:var(--accent-soft);color:var(--accent-deep)"><app-icon name="user" /></span>
+            <div><div class="ministat-n">{{ stats()?.nombre_clients_actifs ?? 0 }}</div><div class="ministat-l">clients actifs</div></div>
           </div>
           <div class="ministat">
-            <span class="ministat-ic" style="background:var(--tertiary-soft);color:var(--tertiary)"><app-icon name="starFill" /></span>
-            <div><div class="ministat-n"><app-count-up [value]="totalReviews()" /></div><div class="ministat-l">avis reçus</div></div>
+            <span class="ministat-ic" style="background:var(--tertiary-soft);color:var(--tertiary)"><app-icon name="chart" /></span>
+            <div><div class="ministat-n"><app-count-up [value]="stats()?.score_moyen ?? 0" /></div><div class="ministat-l">score moyen</div></div>
           </div>
           <div class="ministat">
-            <span class="ministat-ic" style="background:var(--primary-soft);color:var(--primary-deep)"><app-icon name="check" /></span>
-            <div><div class="ministat-n">{{ completeCount() }}</div><div class="ministat-l">fiches complètes</div></div>
+            <span class="ministat-ic" style="background:var(--accent-soft);color:var(--accent-deep)"><app-icon name="star" /></span>
+            <div><div class="ministat-n">{{ stats()?.avis_en_attente ?? 0 }}</div><div class="ministat-l">avis en attente</div></div>
           </div>
         </div>
 
-        @if (fiches().length === 0) {
+        <!-- Filtres -->
+        <div class="card fade-up" style="animation-delay:90ms;padding:16px 18px;margin-bottom:22px">
+          <div class="row" style="gap:14px;flex-wrap:wrap;align-items:flex-end">
+            <div class="field" style="margin:0;min-width:180px">
+              <label class="field-label" style="font-size:13px">Client</label>
+              <select class="input" [ngModel]="clientFilter()" (ngModelChange)="clientFilter.set($event)">
+                <option value="all">Tous les clients</option>
+                @for (c of clients(); track c) { <option [value]="c">{{ c }}</option> }
+              </select>
+            </div>
+            <div class="field" style="margin:0;min-width:160px">
+              <label class="field-label" style="font-size:13px">Catégorie</label>
+              <select class="input" [ngModel]="categoryFilter()" (ngModelChange)="categoryFilter.set($event)">
+                <option value="all">Toutes</option>
+                @for (cat of categories(); track cat) { <option [value]="cat">{{ cat }}</option> }
+              </select>
+            </div>
+            <div class="field" style="margin:0;min-width:180px">
+              <label class="field-label" style="font-size:13px">Complétude</label>
+              <select class="input" [ngModel]="scoreFilter()" (ngModelChange)="setScoreFilter($event)">
+                <option value="all">Tous les scores</option>
+                <option value="low">Faible (&lt; 50%)</option>
+                <option value="mid">Moyen (50–99%)</option>
+                <option value="full">Complète (100%)</option>
+              </select>
+            </div>
+            <button class="btn btn-quiet btn-sm" (click)="resetFilters()" style="margin-left:auto"><app-icon name="close" /> Réinitialiser</button>
+          </div>
+        </div>
+
+        @if (filteredFiches().length === 0) {
           <div class="card center" style="padding:48px">
-            <p class="muted" style="font-weight:600">Aucune fiche pour le moment. Connectez votre première fiche Google ✨</p>
+            <p class="muted" style="font-weight:600">Aucune fiche ne correspond à ces filtres.</p>
           </div>
         } @else {
           <div class="fiches-grid">
-            @for (f of fiches(); track f.id; let i = $index) {
-              <div class="card fiche-card fade-up" [style.animationDelay.ms]="i * 70" (click)="open(f, 'infos')">
+            @for (f of filteredFiches(); track f.id; let i = $index) {
+              <div class="card fiche-card fade-up" [style.animationDelay.ms]="i * 60" (click)="open(f, 'infos')">
                 <div class="fiche-top">
                   <div class="grow">
                     <h3 class="fiche-name">{{ f.nom }}</h3>
-                    @if (f.categorie) { <span class="pill pill-muted" style="margin-top:6px">{{ f.categorie }}</span> }
+                    <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">
+                      @if (f.client.nom) { <span class="pill pill-muted"><app-icon name="user" /> {{ f.client.nom }}</span> }
+                      @if (f.client.is_active === false) { <span class="pill" style="background:#FBEAE4;color:#C2553B">Inactif</span> }
+                      @if (f.categorie) { <span class="pill pill-muted">{{ f.categorie }}</span> }
+                    </div>
                   </div>
-                  @if (f.score >= 100) { <span class="pill pill-complete" title="Fiche complète"><app-icon name="check" /> Complète</span> }
+                  @if (f.score >= 100) { <span class="pill pill-complete" title="Fiche complète"><app-icon name="check" /></span> }
                 </div>
 
-                <div style="margin:18px 0 16px"><app-score-bar [score]="f.score" /></div>
+                <div style="margin:16px 0 14px"><app-score-bar [score]="f.score" /></div>
 
                 <div class="fiche-meta">
                   @if (f.adresse) { <div class="row" style="gap:9px"><app-icon name="pin" style="color:var(--accent);font-size:17px" /><span>{{ f.adresse }}</span></div> }
-                  @if (f.telephone) { <div class="row" style="gap:9px"><app-icon name="phone" style="color:var(--primary);font-size:17px" /><span>{{ f.telephone }}</span></div> }
+                  @if (f.client.email) { <div class="row" style="gap:9px"><app-icon name="text" style="color:var(--primary);font-size:17px" /><span>{{ f.client.email }}</span></div> }
                 </div>
 
-                @if (needs(f).length > 0) {
+                @if (f.avis_sans_reponse > 0) {
                   <div class="fiche-needs">
-                    <app-icon name="sparkle" style="color:var(--accent-deep)" />
-                    <span>À compléter&nbsp;: {{ needs(f).slice(0,2).join(', ') }}{{ needs(f).length > 2 ? ' +' + (needs(f).length - 2) : '' }}</span>
+                    <app-icon name="star" style="color:var(--accent-deep)" />
+                    <span>{{ f.avis_sans_reponse }} avis sans réponse</span>
                   </div>
                 } @else {
                   <div class="fiche-needs done">
                     <app-icon name="check" style="color:var(--primary-deep)" />
-                    <span>Rien à faire, tout est à jour ✨</span>
+                    <span>Tous les avis ont une réponse</span>
                   </div>
                 }
 
@@ -90,81 +127,70 @@ import { AddFicheModalComponent } from '../add-fiche-modal/add-fiche-modal.compo
                 </div>
               </div>
             }
-
-            <button class="card add-card fade-up" [style.animationDelay.ms]="fiches().length * 70" (click)="addFiche()">
-              <span class="add-plus"><app-icon name="plus" /></span>
-              <span style="font-weight:800;font-size:16px">Ajouter un commerce</span>
-              <span class="faint" style="font-size:13.5px;font-weight:600;text-align:center">Connectez une nouvelle fiche Google en quelques clics</span>
-            </button>
           </div>
         }
       }
     </main>
-
-    @if (showAddFiche()) {
-      <app-add-fiche-modal (close)="showAddFiche.set(false)" (created)="onCreated($event)" />
-    }
   `,
 })
 export class DashboardComponent implements OnInit {
   private gmbService = inject(GmbService);
   private router = inject(Router);
-  private toast = inject(ToastService);
 
-  fiches = signal<Fiche[]>([]);
+  fiches = signal<AdminFiche[]>([]);
+  stats = signal<AdminStats | null>(null);
   isLoading = signal(true);
-  totalReviews = signal(0);
-  showAddFiche = signal(false);
 
-  avgScore = computed(() => {
-    const f = this.fiches();
-    if (!f.length) return 0;
-    return Math.round(f.reduce((s, x) => s + (x.score || 0), 0) / f.length);
+  clientFilter = signal<string>('all');
+  categoryFilter = signal<string>('all');
+  scoreFilter = signal<ScoreBucket>('all');
+
+  clients = computed(() => {
+    const set = new Set<string>();
+    for (const f of this.fiches()) { if (f.client?.nom) set.add(f.client.nom); }
+    return Array.from(set).sort();
   });
-  completeCount = computed(() => this.fiches().filter(f => f.score >= 100).length);
+
+  categories = computed(() => {
+    const set = new Set<string>();
+    for (const f of this.fiches()) { if (f.categorie) set.add(f.categorie); }
+    return Array.from(set).sort();
+  });
+
+  filteredFiches = computed(() => {
+    const client = this.clientFilter();
+    const cat = this.categoryFilter();
+    const bucket = this.scoreFilter();
+    return this.fiches().filter(f => {
+      if (client !== 'all' && f.client?.nom !== client) return false;
+      if (cat !== 'all' && f.categorie !== cat) return false;
+      if (bucket === 'low' && f.score >= 50) return false;
+      if (bucket === 'mid' && (f.score < 50 || f.score >= 100)) return false;
+      if (bucket === 'full' && f.score < 100) return false;
+      return true;
+    });
+  });
 
   ngOnInit(): void {
-    this.loadFiches();
-    this.gmbService.getDashboardStats().subscribe({
-      next: (s) => this.totalReviews.set(s?.nombre_total_avis ?? 0),
-      error: () => { /* laisse 0 */ },
-    });
-  }
-
-  loadFiches(): void {
-    this.isLoading.set(true);
-    this.gmbService.getFiches().subscribe({
+    this.gmbService.getAdminFiches().subscribe({
       next: (fiches) => { this.fiches.set(fiches); this.isLoading.set(false); },
-      error: (e) => { console.error('Erreur chargement fiches:', e); this.isLoading.set(false); },
+      error: (e) => { console.error('Erreur chargement fiches admin:', e); this.isLoading.set(false); },
+    });
+    this.gmbService.getAdminStats().subscribe({
+      next: (s) => this.stats.set(s),
+      error: () => { /* stats best-effort */ },
     });
   }
 
-  greeting(): string {
-    const h = new Date().getHours();
-    return h < 12 ? 'Bonjour' : h < 18 ? 'Bel après-midi' : 'Bonsoir';
+  setScoreFilter(v: string) { this.scoreFilter.set(v as ScoreBucket); }
+
+  resetFilters() {
+    this.clientFilter.set('all');
+    this.categoryFilter.set('all');
+    this.scoreFilter.set('all');
   }
 
-
-
-  needs(f: Fiche): string[] {
-    const n: string[] = [];
-    if (!f.site_web) n.push('Site web');
-    if (!f.horaires) n.push('Horaires');
-    if (!f.description) n.push('Description');
-    return n;
-  }
-
-  open(f: Fiche, which: 'infos' | 'avis' | 'photos') {
+  open(f: AdminFiche, which: 'infos' | 'avis' | 'photos') {
     this.router.navigate(['/fiche', f.id], { queryParams: { tab: which } });
-  }
-
-  addFiche() {
-    this.showAddFiche.set(true);
-  }
-
-  onCreated(fiche: Fiche) {
-    // Ajout optimiste en tête de liste (pas d'endpoint de création côté backend).
-    this.fiches.update(list => [fiche, ...list]);
-    this.toast.show('Fiche créée — pensez à la compléter 🌱');
   }
 }
