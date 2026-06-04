@@ -682,7 +682,7 @@ h1,h2,h3,h4 { font-family: var(--font-display); line-height: 1.1; color: var(--i
 @media (max-width: 940px) {
   .hero { grid-template-columns: 1fr; gap: 30px; padding: 40px 0 50px; }
   .hero-title { font-size: 40px; }
-  .hero-preview { height: 320px; max-width: 380px; margin: 0 auto; overflow: hidden; }
+  .hero-preview { height: 320px; max-width: 380px; margin: 0 auto; }
   .features-grid { grid-template-columns: 1fr; }
   .dash-stats { grid-template-columns: repeat(2, 1fr); }
   .fiches-grid { grid-template-columns: 1fr 1fr; }
@@ -699,15 +699,17 @@ h1,h2,h3,h4 { font-family: var(--font-display); line-height: 1.1; color: var(--i
   .fiches-grid { grid-template-columns: 1fr; }
   .stats-tiles { grid-template-columns: 1fr 1fr; }
   .brand-name { font-size: 18px; }
-  .hero-preview { height: 300px; max-width: 320px; overflow: hidden; }
+  .hero-preview { height: 280px; max-width: 340px; transform: scale(0.82); transform-origin: top center; }
   .hp-card { width: 280px; }
-  .hp-chip { padding: 9px 12px; gap: 7px; font-size: 12px; border-radius: 12px; }
-  .hp-chip-1 { right: -4px; top: 0; }
-  .hp-chip-2 { left: -4px; bottom: 12px; }
+  .hp-chip { padding: 9px 12px; gap: 7px; border-radius: 12px; }
+  .hp-chip-1 { right: 10px; top: 0; }
+  .hp-chip-2 { left: 10px; bottom: 14px; }
 }
 @media (max-width: 400px) {
-  .hero-preview { height: 280px; max-width: 280px; }
-  .hp-card { width: 240px; padding: var(--pad) 16px; }
-  .hp-chip-1 { right: 0; }
-  .hp-chip-2 { left: 0; }
+  .hero { gap: 20px; padding: 30px 0 40px; }
+  .hero-title { font-size: 28px; }
+  .hero-preview { height: 260px; max-width: 300px; transform: scale(0.72); }
+  .hp-card { width: 260px; }
+  .hp-chip-1 { right: 20px; top: 4px; }
+  .hp-chip-2 { left: 20px; bottom: 18px; }
 }
