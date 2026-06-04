@@ -294,4 +294,22 @@ export class GmbService {
     this.clearCache(`photos_${ficheId}`);
     return this.http.delete<{ message: string }>(`${this.apiUrl}/photos/fiches/${ficheId}/photos/${photoId}`);
   }
+
+  /** Envoie une demande de modification (ticket) — photos jointes facultatives. */
+  submitTicket(
+    ficheId: string,
+    payload: { type: string; areas: string[]; urgency: string; message: string; contact_email: string },
+    files: File[] = [],
+  ): Observable<{ id: string; email_sent: boolean }> {
+    const fd = new FormData();
+    fd.append('type', payload.type);
+    fd.append('urgency', payload.urgency);
+    fd.append('message', payload.message);
+    fd.append('contact_email', payload.contact_email);
+    payload.areas.forEach(a => fd.append('areas', a));
+    files.forEach(f => fd.append('files', f));
+    return this.http.post<{ id: string; email_sent: boolean }>(
+      `${this.apiUrl}/tickets/fiches/${ficheId}`, fd,
+    );
+  }
 }

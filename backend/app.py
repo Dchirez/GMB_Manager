@@ -11,10 +11,11 @@ import jwt
 import requests
 from sqlalchemy import text
 from services.gmb_service import get_fiches_by_user, calculer_score
-from models import db, User, Fiche, Avis, Publication, Notification, Photo
+from models import db, User, Fiche, Avis, Publication, Notification, Photo, Ticket
 from routes.stats import stats_bp
 from routes.notifications import notifications_bp, generate_notifications
 from routes.photos import photos_bp
+from routes.tickets import tickets_bp
 from utils.decorators import token_required
 
 # SECURITY FIX [CWE-770]: rate limiting
@@ -243,6 +244,7 @@ def _safe_error(message, status):
 app.register_blueprint(stats_bp, url_prefix='/api/stats')
 app.register_blueprint(notifications_bp, url_prefix='/api/notifications')
 app.register_blueprint(photos_bp, url_prefix='/api/photos')
+app.register_blueprint(tickets_bp, url_prefix='/api/tickets')
 
 # Health check endpoint
 @app.route('/health', methods=['GET'])

@@ -62,6 +62,7 @@ class Fiche(db.Model):
     # Relationships
     avis = db.relationship('Avis', backref='fiche', lazy=True, cascade='all, delete-orphan')
     publications = db.relationship('Publication', backref='fiche', lazy=True, cascade='all, delete-orphan')
+    tickets = db.relationship('Ticket', backref='fiche', lazy=True, cascade='all, delete-orphan')
 
     def to_dict(self):
         return {
@@ -200,3 +201,38 @@ class Photo(db.Model):
 
     def __repr__(self):
         return f'<Photo {self.filename} on {self.fiche_id}>'
+
+
+class Ticket(db.Model):
+    """
+    Demande de modification (ticket) émise par le gestionnaire pour une fiche.
+    Persistée pour traçabilité ; chaque ticket est aussi envoyé par e-mail.
+    """
+    __tablename__ = 'tickets'
+
+    id = db.Column(db.String(255), primary_key=True, default=lambda: str(uuid.uuid4()))
+    fiche_id = db.Column(db.String(255), db.ForeignKey('fiches.id'), nullable=False)
+    user_id = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=False)
+    type = db.Column(db.String(50), nullable=False, default='modifier')  # modifier/ajouter/retirer/autre
+    areas = db.Column(db.Text, nullable=True)  # éléments concernés, séparés par des virgules
+    urgency = db.Column(db.String(20), nullable=False, default='normal')  # normal/important/urgent
+    message = db.Column(db.Text, nullable=False)
+    contact_email = db.Column(db.String(255), nullable=False)
+    photos_count = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'fiche_id': self.fiche_id,
+            'type': self.type,
+            'areas': self.areas.split(',') if self.areas else [],
+            'urgency': self.urgency,
+            'message': self.message,
+            'contact_email': self.contact_email,
+            'photos_count': self.photos_count,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+
+    def __repr__(self):
+        return f'<Ticket {self.id} ({self.type}) on {self.fiche_id}>'

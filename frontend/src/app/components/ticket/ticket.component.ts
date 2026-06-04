@@ -7,7 +7,7 @@ import { AuthService } from '../../services/auth.service';
 import { ToastService } from '../../services/toast.service';
 import { IconComponent } from '../../shared/icon.component';
 
-interface TicketPhoto { id: string; url: string; name: string; }
+interface TicketPhoto { id: string; url: string; name: string; file: File; }
 
 /** Formulaire de demande de modification (ticket) sur une fiche. */
 @Component({
@@ -142,8 +142,8 @@ interface TicketPhoto { id: string; url: string; name: string; }
           <span class="row faint" style="gap:8px;font-size:13.5px;font-weight:600">
             <app-icon name="clock" style="color:var(--primary)" /> Réponse sous 24-48 h ouvrées
           </span>
-          <button class="btn btn-primary" [class.pay-btn]="!canSend()" [class.disabled]="!canSend()" (click)="submit()">
-            <app-icon name="send" /> Envoyer la demande
+          <button class="btn btn-primary" [class.pay-btn]="!canSend() || isSending()" [class.disabled]="!canSend() || isSending()" (click)="submit()">
+            <app-icon name="send" /> {{ isSending() ? 'Envoi…' : 'Envoyer la demande' }}
           </button>
         </div>
       </div>
@@ -179,6 +179,7 @@ export class TicketComponent implements OnInit, OnDestroy {
   email = signal('');
   photos = signal<TicketPhoto[]>([]);
   drag = signal(false);
+  isSending = signal(false);
 
   emailValid = () => this.email().trim().length > 3 && this.email().includes('@');
   canSend = () => this.message().trim().length >= 10 && this.emailValid();
@@ -221,7 +222,7 @@ export class TicketComponent implements OnInit, OnDestroy {
     if (!imgs.length) return;
     this.photos.update(prev => [
       ...prev,
-      ...imgs.map(f => ({ id: Math.random().toString(36).slice(2), url: URL.createObjectURL(f), name: f.name })),
+      ...imgs.map(f => ({ id: Math.random().toString(36).slice(2), url: URL.createObjectURL(f), name: f.name, file: f })),
     ]);
   }
 
@@ -236,10 +237,29 @@ export class TicketComponent implements OnInit, OnDestroy {
   back() { this.router.navigate(['/fiche', this.ficheId]); }
 
   submit() {
-    if (!this.canSend()) return;
-    // Pas d'endpoint backend de ticketing pour l'instant : confirmation côté front
-    // (le design est volontairement front-only). À brancher sur POST /api/tickets.
-    this.toast.show('Votre demande a bien été envoyée — réponse sous 24-48 h 🌿');
-    this.router.navigate(['/fiche', this.ficheId]);
+    if (!this.canSend() || this.isSending()) return;
+    this.isSending.set(true);
+    this.gmbService.submitTicket(
+      this.ficheId,
+      {
+        type: this.type(),
+        areas: this.selectedAreas(),
+        urgency: this.urgency(),
+        message: this.message().trim(),
+        contact_email: this.email().trim(),
+      },
+      this.photos().map(p => p.file),
+    ).subscribe({
+      next: () => {
+        this.isSending.set(false);
+        this.toast.show('Votre demande a bien été envoyée — réponse sous 24-48 h 🌿');
+        this.router.navigate(['/fiche', this.ficheId]);
+      },
+      error: (e) => {
+        console.error('Erreur envoi ticket:', e);
+        this.isSending.set(false);
+        this.toast.show("L'envoi a échoué. Réessayez dans un instant.");
+      },
+    });
   }
 }
