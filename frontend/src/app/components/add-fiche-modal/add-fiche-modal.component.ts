@@ -4,17 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { IconComponent } from '../../shared/icon.component';
 import { Fiche } from '../../services/gmb.service';
 import { scoreColor } from '../../shared/score.util';
-
-const CATEGORIES: string[] = [
-  'Boulangerie',
-  'Restaurant',
-  'Restauration rapide',
-  'Coiffeur',
-  'Garage automobile',
-  'Beauté & bien-être',
-  'Commerce',
-  'Autre',
-];
+import { CATEGORIES } from '../../shared/category.util';
 
 /** Modale de création d'une fiche / commerce. */
 @Component({
@@ -39,9 +29,10 @@ const CATEGORIES: string[] = [
           <div class="af-section">
             <div class="appear-label"><app-icon name="grid" style="color:var(--primary)" /> Type de commerce</div>
             <div class="cat-grid">
-              @for (c of categories; track c) {
-                <button class="cat-opt" [class.on]="cat === c" (click)="cat = c">
-                  <span class="cat-name">{{ c }}</span>
+              @for (c of categories; track c.id) {
+                <button class="cat-opt" [class.on]="cat === c.id" (click)="cat = c.id">
+                  <span class="cat-emoji">{{ c.emoji }}</span>
+                  <span class="cat-name">{{ c.id }}</span>
                 </button>
               }
             </div>

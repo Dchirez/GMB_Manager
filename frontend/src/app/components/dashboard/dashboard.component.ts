@@ -61,7 +61,7 @@ import { AddFicheModalComponent } from '../add-fiche-modal/add-fiche-modal.compo
                     <h3 class="fiche-name">{{ f.nom }}</h3>
                     @if (f.categorie) { <span class="pill pill-muted" style="margin-top:6px">{{ f.categorie }}</span> }
                   </div>
-                  @if (f.score >= 100) { <span class="fiche-trophy" title="Fiche complète">🏆</span> }
+                  @if (f.score >= 100) { <span class="pill pill-complete" title="Fiche complète"><app-icon name="check" /> Complète</span> }
                 </div>
 
                 <div style="margin:18px 0 16px"><app-score-bar [score]="f.score" /></div>
