@@ -19,6 +19,8 @@ services:
         value: https://gmb-backend.dchirez.fr/auth/callback
       - key: FRONTEND_URL
         value: https://gmb.dchirez.fr
+      - key: ADMIN_EMAILS
+        value: dchirez59@gmail.com
       - key: SECRET_KEY
         sync: false
       - key: DATABASE_URL

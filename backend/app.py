@@ -970,16 +970,24 @@ def server_error(error):
 _migrations_applied = False
 
 def _column_exists(table, column):
-    """Check if a column exists in a table (PostgreSQL)"""
+    """Check if a column exists in a table (PostgreSQL).
+
+    IMPORTANT: filtre sur le schéma `public`. Sur Supabase, le schéma `auth`
+    contient aussi une table `users` (avec notamment une colonne `role`) ; sans
+    ce filtre, les migrations croient à tort que la colonne existe déjà et sont
+    silencieusement sautées.
+    """
     result = db.session.execute(text(
-        "SELECT 1 FROM information_schema.columns WHERE table_name = :table AND column_name = :column"
+        "SELECT 1 FROM information_schema.columns "
+        "WHERE table_schema = 'public' AND table_name = :table AND column_name = :column"
     ), {'table': table, 'column': column})
     return result.fetchone() is not None
 
 def _column_type(table, column):
-    """Get the data type of a column (PostgreSQL)"""
+    """Get the data type of a column (PostgreSQL, schéma `public` — cf. _column_exists)"""
     result = db.session.execute(text(
-        "SELECT data_type FROM information_schema.columns WHERE table_name = :table AND column_name = :column"
+        "SELECT data_type FROM information_schema.columns "
+        "WHERE table_schema = 'public' AND table_name = :table AND column_name = :column"
     ), {'table': table, 'column': column})
     row = result.fetchone()
     return row[0] if row else None
