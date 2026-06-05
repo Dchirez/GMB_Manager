@@ -34,6 +34,6 @@ services:
       - key: TICKET_RECIPIENT
         value: dchirez59@gmail.com
       - key: RESEND_FROM
-        value: GMB Manager <onboarding@resend.dev>
+        value: GMB Manager <tickets@dchirez.fr>
       - key: RESEND_API_KEY
         sync: false
