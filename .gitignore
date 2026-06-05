@@ -31,6 +31,9 @@ frontend/yarn-error.log*
 *.swo
 *~
 
+# Graphify
+graphify-out/
+
 # OS
 .DS_Store
 Thumbs.db

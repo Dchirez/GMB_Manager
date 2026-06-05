@@ -1,6 +1,16 @@
 # GMB Manager - Contexte Projet
 
-## 0. Dépôt Git
+## 0. Graphify — Contexte obligatoire
+
+**Avant chaque nouvelle conversation**, lancer `/graphify` sur le projet pour charger
+le knowledge graph existant (`graphify-out/`). Cela permet de réduire drastiquement
+le nombre de tokens consommés en évitant de re-scanner le codebase à chaque session.
+
+**Après chaque ajout conséquent** (nouvelle feature, refacto majeur, nouveau module,
+changement d'architecture), relancer `/graphify` pour mettre à jour le knowledge graph
+afin que les prochaines conversations partent d'un contexte frais et fidèle.
+
+## 0b. Dépôt Git
 https://github.com/Dchirez/GMB_Manager.git
 
 ## 1. Description du projet
@@ -173,6 +183,15 @@ git push -u origin main
 - `POST /api/photos/fiches/<fiche_id>/photos` — Upload (multipart/form-data: file, caption optionnel)
 - `DELETE /api/photos/fiches/<fiche_id>/photos/<photo_id>` — Supprimer photo
 
+### Tickets / demandes de modification (`POST /api/tickets/...`) (juin 2026)
+- `POST /api/tickets/fiches/<fiche_id>` — Crée une demande de modification (ticket) puis
+  l'envoie par e-mail au gestionnaire. `@token_required` + ownership de la fiche (IDOR-safe).
+  Accepte JSON **ou** multipart/form-data (champ `files` = photos jointes, images, 8 max, 5 Mo
+  chacune). Champs : `type` (modifier/ajouter/retirer/autre), `urgency` (normal/important/urgent),
+  `message` (≥10, ≤5000 car.), `contact_email`, `areas` (liste, allowlist). Validation stricte.
+  Le ticket est **persisté** (table `tickets`) puis e-mailé (best-effort) ; renvoie
+  `{...ticket, email_sent}`.
+
 ### Service Angular (gmb.service.ts) - Nouvelles méthodes
 - `getAvisStats(ficheId)` → `Observable<AvisStats>`
 - `getDashboardStats()` → `Observable<DashboardStats>`
@@ -183,6 +202,24 @@ git push -u origin main
 - `uploadPhoto(ficheId, file, caption?)` → `Observable<Photo>`
 - `deletePhoto(ficheId, photoId)` → `Observable<{message}>`
 - `createPublication(ficheId, titre, contenu, file?)` → `Observable<Publication>` (FormData si file, JSON sinon)
+- `submitTicket(ficheId, {type, areas, urgency, message, contact_email}, files?)` → `Observable<{id, email_sent}>` (multipart FormData)
+
+## 6e. Ticketing — demande de modification (juin 2026) ✅
+- **Front** : page `TicketComponent` (route `fiche/:id/demande`, `app.routes.ts`), accessible via le
+  bouton centré « Demander une modification » dans le pied du formulaire de `fiche-detail`
+  (entre la note de réassurance et « Enregistrer les modifications »). Formulaire : type de demande
+  (4 cartes), éléments concernés (chips), message + compteur (envoi ≥10 car.), photos (drag-drop +
+  miniatures), niveau d'urgence (segmented), e-mail de réponse (pré-rempli via `AuthService.getMe`).
+  Icônes `message` et `send` ajoutées à `icon.component`. CSS porté du prototype (`.ticket*`, `.tk-*`,
+  `.req-*`, `.area-chip*`, `.seg-btn*`, dropzone) dans `styles.css`.
+- **Back** : `routes/tickets.py` (`POST /api/tickets/fiches/<id>`), modèle `Ticket` (`models.py`,
+  table créée par `db.create_all()` — aucune migration manuelle), relation cascade `Fiche.tickets`.
+  L'e-mail part vers `TICKET_RECIPIENT` (défaut `dchirez59@gmail.com`), `Reply-To` = e-mail du client,
+  photos en pièces jointes.
+- **E-mail** : `services/email_service.py` via `smtplib` (stdlib, aucune dépendance ajoutée), STARTTLS
+  (587) ou SSL (465). Best-effort : si SMTP non configuré → ticket quand même persisté, `email_sent=false`.
+  Config via `SMTP_HOST/PORT/USER/PASSWORD/FROM` + `TICKET_RECIPIENT` (cf. section 7). Gmail : nécessite
+  la 2FA + un « mot de passe d'application ».
 
 ## 6d. Pas encore implémenté ❌
 - Synchronisation des éditions avec l'API Google Business Profile
@@ -210,6 +247,14 @@ RESET_DB=false
 # Supabase (for photo storage)
 SUPABASE_URL=<voir .env ou Render dashboard>
 SUPABASE_SERVICE_KEY=<voir .env ou Render dashboard>
+
+# Ticketing — e-mail des demandes (SMTP Gmail + mot de passe d'application)
+TICKET_RECIPIENT=dchirez59@gmail.com
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=dchirez59@gmail.com
+SMTP_PASSWORD=<App Password Gmail — voir Render dashboard>
+SMTP_FROM=dchirez59@gmail.com
 ```
 
 **Note:** Toutes les variables d'environnement sont configurées dans Render dashboard.
@@ -233,6 +278,14 @@ DATABASE_URL=postgresql://user:password@localhost:5432/gmb_manager
 # Supabase (for photo storage - optional but needed for gallery feature)
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_KEY=your-service-key
+
+# Ticketing email (SMTP) — optionnel ; sans config, le ticket est persisté mais non e-mailé
+TICKET_RECIPIENT=dchirez59@gmail.com
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-sender@gmail.com
+SMTP_PASSWORD=your-gmail-app-password
+SMTP_FROM=your-sender@gmail.com
 ```
 
 ## 8. Points techniques importants
@@ -673,3 +726,69 @@ accessibles **sans authentification** pour vérifier une app à scope sensible.
   `DATABASE_URL`. Seul point RGPD restant ; à faire dans les dashboards
   Supabase/Render.
 - Soumettre l'app à la **vérification Google OAuth** (voir 14a).
+
+## 15. Séparation des rôles Admin / Client (juin 2026) 👥
+
+Mise en place d'une séparation des rôles : **admin** (le prestataire, gère toutes les
+fiches de tous les clients) et **client** (le commerçant, ne voit que sa/ses fiche(s)).
+
+### 15a. Modèle & rôle (backend)
+- `User.role` (`'admin'` | `'client'`, défaut `'client'`) et `User.is_active` (bool, statut
+  d'abonnement simple) ajoutés dans `models.py`. Migration idempotente dans `run_migrations()`.
+- **Bootstrap admin via `ADMIN_EMAILS`** (env, allowlist d'emails séparés par virgules,
+  défaut `dchirez59@gmail.com`). Le helper `resolve_role(email)` dans `app.py` (re)positionne
+  le rôle **à chaque login** dans `auth_callback` → survit aux resets DB, pas de migration
+  de données manuelle. Le rôle est aussi inclus dans le JWT (claim `role`) **pour l'UX front
+  uniquement** ; l'autorisation backend lit toujours `User.role` en base.
+- `/auth/me` expose désormais `role` et `is_active` (lus en base).
+- **Auto-seed démo retiré** de `auth_callback` (polluait le dashboard admin global).
+  Le seeding reste dispo manuellement (`seed.py` / `POST /api/seed-demo-fiches`).
+
+### 15b. Autorisation (backend)
+- Décorateur `@admin_required` (`utils/decorators.py`) : à appliquer **après** `@token_required` ;
+  vérifie `user.role == 'admin'` **en base** (un JWT forgé `role=admin` ne donne aucun accès → 403).
+- Helper `accessible_fiche(fiche_id, user_id)` (admin-aware) : l'admin accède à **toute** fiche,
+  le client uniquement aux siennes. A **remplacé** toutes les vérifs d'ownership inline
+  (`Fiche.query.filter_by(id=…, user_id=…)`) dans : `app.py` (gmb get/put, avis, publications),
+  `routes/stats.py`, `routes/photos.py` (×3), `routes/tickets.py`. Conséquence : l'admin gère
+  infos/photos/avis/stats/publications de n'importe quel client **via les endpoints existants**,
+  sans endpoints dédiés ni branchement front dans `fiche-detail`.
+
+### 15c. Endpoints admin (`routes/admin.py`, prefix `/api/admin`)
+- `GET /api/admin/fiches` — toutes les fiches des clients (`role='client'`) + infos
+  propriétaire (`client: {user_id, nom, email, is_active}`), `total_avis`, `avis_sans_reponse`.
+  Query param `?active=true|false` pour filtrer par statut d'abonnement.
+- `GET /api/admin/fiches/<id>` — détail enrichi de n'importe quelle fiche.
+- `PUT /api/admin/fiches/<id>` — édite n'importe quelle fiche (recalcule le score).
+- `GET /api/admin/stats` — stats globales : nb clients (total/actifs), nb fiches, score moyen,
+  total avis, avis en attente de réponse.
+
+### 15d. Frontend
+- `AuthService.getRole()` / `isAdmin()` (décode le claim `role` du JWT ; défaut `'client'`
+  si absent — jamais `'admin'`).
+- Guards `adminGuard` / `clientGuard` (`guards/role.guard.ts`) : valident l'expiration **et**
+  le rôle, redirigent vers l'espace de l'autre rôle. (Le backend reste la seule autorité.)
+- Routes : `/dashboard` → `adminGuard`, **nouvelle** `/mon-commerce` → `clientGuard`,
+  `/fiche/:id` → `authGuard` (permissions vérifiées côté backend).
+- **Redirection post-login** (`AuthCallbackComponent`) : admin → `/dashboard`, client → `/mon-commerce`.
+- **`ClientHomeComponent`** (`/mon-commerce`) : vue simplifiée. 1 fiche → carte détaillée directe
+  (accès avis/photos/stats + bouton « Demander une modification » bien visible) ; plusieurs →
+  liste compacte. Pas de bouton « Ajouter une fiche ».
+- **`DashboardComponent`** (réécrit, dashboard admin) : `getAdminFiches()` + `getAdminStats()`,
+  stats globales (fiches gérées, clients actifs, score moyen, avis en attente), filtres
+  client / catégorie / complétude (<50, 50-99, 100), pill « client » + badge « Inactif » +
+  compteur avis sans réponse sur chaque carte.
+- `navbar` (logo) et `fiche-detail` (bouton retour + libellé) deviennent role-aware.
+- Service : interfaces `AdminFiche`/`AdminStats`, méthodes `getAdminFiches/getAdminFiche/
+  updateAdminFiche/getAdminStats` (non cachées — vue prestataire toujours fraîche). Icône `user`
+  ajoutée à `icon.component`.
+
+### 15e. Reste à faire / limitations connues
+- **Création de fiche par l'admin pour un client** : pas implémentée (il faudrait un sélecteur
+  de client + endpoint de création assignant `user_id`). Le bouton « Ajouter une fiche » a été
+  retiré du dashboard admin pour ne pas créer de fiches sans propriétaire. À traiter séparément.
+- **Synchro Google** : l'admin n'a pas le token Google des clients ; il gère les données **en BDD**
+  (infos/photos/avis/tickets), pas la vraie fiche Google côté client. Aligné avec le fait que la
+  synchro Google n'est pas encore implémentée (cf. 6d).
+- **Config prod** : ajouter `ADMIN_EMAILS=dchirez59@gmail.com` dans le dashboard Render
+  (présent dans `render.yaml` et `.env.example`).
