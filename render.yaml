@@ -27,3 +27,18 @@ services:
         sync: false
       - key: FLASK_ENV
         value: production
+      # Ticketing — envoi des demandes de modification par e-mail (SMTP Gmail).
+      # SMTP_PASSWORD est un secret (App Password Gmail) -> à saisir dans le
+      # dashboard Render (sync: false), pas en clair dans le repo.
+      - key: TICKET_RECIPIENT
+        value: dchirez59@gmail.com
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        value: dchirez59@gmail.com
+      - key: SMTP_FROM
+        value: dchirez59@gmail.com
+      - key: SMTP_PASSWORD
+        sync: false
