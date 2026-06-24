@@ -27,8 +27,16 @@ class User(db.Model):
     # (commerçant, voit uniquement les siennes). La valeur fait foi côté backend ;
     # le claim équivalent dans le JWT ne sert qu'à l'UX frontend.
     role = db.Column(db.String(20), nullable=False, default='client')
-    # Statut d'abonnement du client (flag simple, évolutif vers une table dédiée).
+    # Statut d'abonnement du client. `is_active` est piloté par les webhooks Stripe
+    # (True tant que l'abonnement est actif/à l'essai). Les champs Stripe ci-dessous
+    # tracent l'état de la facturation ; la source de vérité reste Stripe.
     is_active = db.Column(db.Boolean, nullable=False, default=True)
+    stripe_customer_id = db.Column(db.String(255), nullable=True, index=True)
+    stripe_subscription_id = db.Column(db.String(255), nullable=True)
+    # 'active' | 'trialing' | 'past_due' | 'canceled' | 'incomplete' | 'unpaid' | None
+    subscription_status = db.Column(db.String(30), nullable=True)
+    plan = db.Column(db.String(50), nullable=True)  # clé du forfait (ex. 'pro')
+    current_period_end = db.Column(db.DateTime, nullable=True)  # fin de période payée
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     # Relationships
@@ -41,6 +49,9 @@ class User(db.Model):
             'name': self.name,
             'role': self.role,
             'is_active': self.is_active,
+            'subscription_status': self.subscription_status,
+            'plan': self.plan,
+            'current_period_end': self.current_period_end.isoformat() if self.current_period_end else None,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 

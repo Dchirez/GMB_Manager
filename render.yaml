@@ -37,3 +37,10 @@ services:
         value: GMB Manager <tickets@dchirez.fr>
       - key: RESEND_API_KEY
         sync: false
+      # Paiement Stripe (abonnements). Toutes secrètes -> à saisir dans le dashboard Render.
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false

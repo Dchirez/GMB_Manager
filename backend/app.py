@@ -17,6 +17,7 @@ from routes.notifications import notifications_bp, generate_notifications
 from routes.photos import photos_bp
 from routes.tickets import tickets_bp
 from routes.admin import admin_bp
+from routes.billing import billing_bp
 from utils.decorators import token_required, accessible_fiche
 
 # SECURITY FIX [CWE-770]: rate limiting
@@ -264,6 +265,7 @@ app.register_blueprint(notifications_bp, url_prefix='/api/notifications')
 app.register_blueprint(photos_bp, url_prefix='/api/photos')
 app.register_blueprint(tickets_bp, url_prefix='/api/tickets')
 app.register_blueprint(admin_bp, url_prefix='/api/admin')
+app.register_blueprint(billing_bp, url_prefix='/api/billing')
 
 # Health check endpoint
 @app.route('/health', methods=['GET'])
@@ -1027,6 +1029,20 @@ def run_migrations():
             ))
             db.session.commit()
             logger.info("✓ Migration: added is_active to users")
+
+        # Migration 4: colonnes Stripe (abonnements)
+        _stripe_cols = {
+            'stripe_customer_id': 'VARCHAR(255)',
+            'stripe_subscription_id': 'VARCHAR(255)',
+            'subscription_status': 'VARCHAR(30)',
+            'plan': 'VARCHAR(50)',
+            'current_period_end': 'TIMESTAMP',
+        }
+        for col, coltype in _stripe_cols.items():
+            if not _column_exists('users', col):
+                db.session.execute(text(f'ALTER TABLE users ADD COLUMN {col} {coltype}'))
+                db.session.commit()
+                logger.info(f"✓ Migration: added {col} to users")
 
     except Exception as e:
         db.session.rollback()

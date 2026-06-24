@@ -792,3 +792,102 @@ fiches de tous les clients) et **client** (le commerçant, ne voit que sa/ses fi
   synchro Google n'est pas encore implémentée (cf. 6d).
 - **Config prod** : ajouter `ADMIN_EMAILS=dchirez59@gmail.com` dans le dashboard Render
   (présent dans `render.yaml` et `.env.example`).
+
+## 16. Paiement — abonnements Stripe (juin 2026) 💳
+
+Système d'abonnement **self-service côté commerçant (client)** via **Stripe Payment
+Element** (carte tokenisée, jamais sur notre backend → conforme PCI). Les forfaits/prix
+vivent dans Stripe (Products/Prices), donc rien n'est codé en dur.
+
+### 16a. Backend
+- **Modèle `User`** : `stripe_customer_id`, `stripe_subscription_id`, `subscription_status`
+  (`active`/`trialing`/`past_due`/`canceled`/`incomplete`/…), `plan` (price_id), `current_period_end`.
+  `is_active` est **piloté par les webhooks** (True si status ∈ {active, trialing}). Migration
+  idempotente dans `run_migrations()` (Migration 4).
+- **`routes/billing.py`** (prefix `/api/billing`), `@token_required` sauf webhook :
+  - `GET /config` → publishableKey + forfaits actifs lus dynamiquement via `stripe.Price.list`.
+  - `GET /subscription` → état d'abonnement de l'utilisateur courant.
+  - `POST /create-subscription` `{price_id}` → crée/récupère le Customer, crée un abonnement
+    `payment_behavior=default_incomplete`, renvoie le `client_secret` du PaymentIntent.
+    Refuse si déjà actif (409).
+  - `POST /portal` → session du **Billing Portal** Stripe (gérer/annuler).
+  - `POST /webhook` → **SOURCE DE VÉRITÉ**. Signature vérifiée (`STRIPE_WEBHOOK_SECRET` requis,
+    sinon 503). Gère `customer.subscription.*`, `invoice.paid`, `invoice.payment_failed` →
+    `_sync_subscription()` met à jour status/is_active/current_period_end/plan.
+- `stripe==11.1.0` ajouté à `requirements.txt`. Import optionnel (`_HAS_STRIPE`) : l'app démarre
+  même sans la lib/les clés (endpoints renvoient `configured:false` / 503).
+
+### 16b. Frontend
+- `@stripe/stripe-js` ajouté.
+- **`services/stripe-billing.service.ts`** (`StripeBillingService`) — distinct de l'ancien
+  `BillingService` (carte locale mock utilisée par invoices/company-card-modal, conservé).
+- **`payment.component.ts`** réécrit : charge `/config`, liste les forfaits Stripe, crée
+  l'abonnement, monte le **Payment Element** (`#stripe-payment-element`), confirme via
+  `stripe.confirmPayment({ redirect: 'if_required' })`. Gère états choose/pay/processing/
+  success/already/unconfigured + retour 3-D Secure (`redirect_status`). Route `/paiement`
+  (sans param) ajoutée en plus de `/paiement/:planId`.
+- **`/mon-commerce`** (`ClientHomeComponent`) : bannière d'abonnement — CTA « S'abonner »
+  (→ `/paiement`) si inactif, sinon « Abonnement actif » + « Gérer » (portal).
+- La clé publishable vient du backend (`/config`), pas d'un `environment.ts`.
+
+### 16c. Setup Stripe (à faire dans le dashboard)
+1. **Clés API** (mode Test) → `STRIPE_SECRET_KEY` (`sk_test_…`), `STRIPE_PUBLISHABLE_KEY`
+   (`pk_test_…`) sur Render (et `.env` local).
+2. **Products/Prices** : créer les forfaits (récurrents) dans Stripe → ils apparaissent
+   automatiquement via `/config`.
+3. **Webhook** : Dashboard Stripe > Developers > Webhooks → endpoint
+   `https://gmb-backend.dchirez.fr/api/billing/webhook`, événements `customer.subscription.*`,
+   `invoice.paid`, `invoice.payment_failed` → copier le `whsec_…` dans `STRIPE_WEBHOOK_SECRET`.
+   En local : `stripe listen --forward-to localhost:5000/api/billing/webhook`.
+4. **Billing Portal** : activer le portail client dans Stripe (Settings > Billing > Customer portal).
+
+### 16d. Reste à faire / notes
+- `plan-modal.component.ts` affiche encore des forfaits mockés (Découverte/Pro/Agence) ;
+  le vrai choix se fait sur `/paiement` (forfaits Stripe). À harmoniser si besoin.
+- Cartes de test Stripe : `4242 4242 4242 4242`, date future, CVC quelconque.
+- Passer en **mode Live** = remplacer les clés `sk_live_/pk_live_` + recréer le webhook live.
+
+## 17. ⏳ ACTIONS MANUELLES EN ATTENTE (à faire) — màj 6 juin 2026
+
+> Section mémo : ce qui reste à faire côté **dashboards / config** (hors-code). À traiter
+> en priorité au début de la prochaine session.
+
+### 17a. 🔴 Paiement Stripe — activer (le code est prêt, pas encore configuré)
+- [ ] **Clés API** (Stripe Dashboard → Developers → API keys, mode **Test** d'abord) → sur Render :
+      `STRIPE_SECRET_KEY` (`sk_test_…`) et `STRIPE_PUBLISHABLE_KEY` (`pk_test_…`).
+- [ ] **Créer les forfaits** dans Stripe (Products → prix **récurrent** mensuel/annuel).
+      Ils apparaissent automatiquement dans `/paiement` via `/api/billing/config`.
+- [ ] **Webhook** (Developers → Webhooks → Add endpoint) :
+      URL `https://gmb-backend.dchirez.fr/api/billing/webhook`,
+      événements `customer.subscription.*`, `invoice.paid`, `invoice.payment_failed`
+      → copier le `whsec_…` dans `STRIPE_WEBHOOK_SECRET` sur Render.
+- [ ] **Activer le Customer Portal** (Settings → Billing → Customer portal).
+- [ ] **Push + redeploy** (requirements inclut `stripe`, clés en `sync:false` dans render.yaml).
+- [ ] **Tester** : carte `4242 4242 4242 4242` (date future, CVC quelconque) depuis `/mon-commerce`
+      → bannière « S'abonner » → paiement → vérifier logs `Abonnement synchronisé` + statut « actif ».
+- [ ] Plus tard : passer en **mode Live** (clés `sk_live_/pk_live_` + recréer le webhook live).
+- [ ] (Optionnel) Harmoniser `plan-modal` (forfaits mockés) avec les vrais forfaits Stripe.
+
+### 17b. 🟠 Décisions produit en suspens
+- [ ] **Modèle d'activation** : `User.is_active` vaut `True` par défaut (tier gratuit implicite).
+      Décider si un commerçant doit être **inactif tant qu'il n'a pas payé** (alors changer le
+      défaut à `False` + adapter le filtre du dashboard admin). L'UI se base déjà sur
+      `subscription_status` (active/trialing), donc la bannière est correcte quoi qu'il arrive.
+- [ ] **Création de fiche par l'admin pour un client** : non implémentée (bouton retiré du
+      dashboard admin). Nécessite un sélecteur de client + endpoint assignant `user_id` (cf. 15e).
+
+### 17c. 🟡 Git — commits/push restants
+- [ ] Committer/pusher : système de paiement Stripe (backend `models.py`, `app.py`,
+      `routes/billing.py`, `requirements.txt` ; front `payment.component`, `client-home.component`,
+      `stripe-billing.service`, `app.routes`, `package.json`/`package-lock.json`) + `render.yaml`,
+      `.env.example`, `CLAUDE.md`, et les restes (`.gitignore`, section 15).
+
+### 17d. 🟢 Déjà réglé (rappel, ne pas refaire)
+- ✅ E-mails de tickets via **Resend** (domaine `dchirez.fr` vérifié, envoi depuis `tickets@dchirez.fr`).
+      `RESEND_API_KEY` à garder uniquement dans Render (clé régénérée après partage).
+- ✅ Séparation **admin/client** + fix migration `role` (déployés, login OK).
+
+### 17e. 🔵 RGPD (de la section 14e, toujours valable)
+- [ ] Résidence des données UE : projet Supabase en `eu-central-1` (Frankfurt) + `DATABASE_URL` migrée.
+      (Render backend déjà en région Frankfurt.)
+- [ ] Soumettre l'app à la **vérification Google OAuth** (scope `business.manage`, cf. 14a).

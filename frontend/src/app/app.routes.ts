@@ -25,6 +25,7 @@ export const appRoutes: Routes = [
   { path: 'fiche/:id/demande', component: TicketComponent, canActivate: [authGuard] },
   { path: 'avis/:id', component: AvisComponent, canActivate: [authGuard] },
   { path: 'publications/:id', component: PublicationsComponent, canActivate: [authGuard] },
+  { path: 'paiement', component: PaymentComponent, canActivate: [authGuard] },
   { path: 'paiement/:planId', component: PaymentComponent, canActivate: [authGuard] },
   { path: 'factures', component: InvoicesComponent, canActivate: [authGuard] }
 ];

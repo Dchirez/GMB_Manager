@@ -3,6 +3,8 @@ import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { GmbService, Fiche } from '../../services/gmb.service';
 import { AuthService } from '../../services/auth.service';
+import { StripeBillingService, SubscriptionState } from '../../services/stripe-billing.service';
+import { ToastService } from '../../services/toast.service';
 import { IconComponent } from '../../shared/icon.component';
 import { ScoreBarComponent } from '../../shared/score-bar.component';
 
@@ -24,6 +26,31 @@ import { ScoreBarComponent } from '../../shared/score-bar.component';
           <h1 style="font-size:32px">{{ fiches().length > 1 ? 'Vos commerces' : 'Votre commerce' }}</h1>
         </div>
       </div>
+
+      <!-- Bannière d'abonnement -->
+      @if (sub(); as s) {
+        @if (s.subscription_status === 'active' || s.subscription_status === 'trialing') {
+          <div class="card fade-up" style="display:flex;align-items:center;gap:14px;padding:14px 18px;margin-bottom:22px">
+            <span class="ministat-ic" style="background:var(--primary-soft);color:var(--primary-deep)"><app-icon name="check" /></span>
+            <div class="grow">
+              <div style="font-weight:800;font-size:15px">Abonnement actif</div>
+              @if (s.current_period_end) {
+                <div class="faint" style="font-size:13px;font-weight:600">Prochaine échéance le {{ s.current_period_end | date:'dd/MM/yyyy' }}</div>
+              }
+            </div>
+            <button class="btn btn-ghost btn-sm" [disabled]="portalLoading()" (click)="manage()"><app-icon name="edit" /> Gérer</button>
+          </div>
+        } @else {
+          <div class="card fade-up" style="display:flex;align-items:center;gap:14px;padding:16px 18px;margin-bottom:22px;border-color:color-mix(in srgb, var(--accent) 40%, var(--border))">
+            <span class="ministat-ic" style="background:var(--accent-soft);color:var(--accent-deep)"><app-icon name="sparkle" /></span>
+            <div class="grow">
+              <div style="font-weight:800;font-size:15px">Activez votre abonnement</div>
+              <div class="faint" style="font-size:13px;font-weight:600">Profitez de la gestion complète de votre fiche et du suivi de vos avis.</div>
+            </div>
+            <button class="btn btn-accent btn-sm" (click)="subscribe()"><app-icon name="sparkle" /> S'abonner</button>
+          </div>
+        }
+      }
 
       @if (isLoading()) {
         <div class="center muted" style="padding:60px 0;font-weight:600">Chargement de votre espace…</div>
@@ -112,11 +139,15 @@ import { ScoreBarComponent } from '../../shared/score-bar.component';
 export class ClientHomeComponent implements OnInit {
   private gmbService = inject(GmbService);
   private auth = inject(AuthService);
+  private billing = inject(StripeBillingService);
+  private toast = inject(ToastService);
   private router = inject(Router);
 
   fiches = signal<Fiche[]>([]);
   isLoading = signal(true);
   name = signal('');
+  sub = signal<SubscriptionState | null>(null);
+  portalLoading = signal(false);
 
   ngOnInit(): void {
     this.auth.getMe().subscribe({
@@ -126,6 +157,20 @@ export class ClientHomeComponent implements OnInit {
     this.gmbService.getFiches().subscribe({
       next: (fiches) => { this.fiches.set(fiches); this.isLoading.set(false); },
       error: (e) => { console.error('Erreur chargement fiches:', e); this.isLoading.set(false); },
+    });
+    this.billing.getSubscription().subscribe({
+      next: (s) => this.sub.set(s),
+      error: () => { /* bannière masquée si indisponible */ },
+    });
+  }
+
+  subscribe() { this.router.navigate(['/paiement']); }
+
+  manage() {
+    this.portalLoading.set(true);
+    this.billing.openPortal().subscribe({
+      next: (res) => { window.location.href = res.url; },
+      error: () => { this.portalLoading.set(false); this.toast.show('Impossible d\'ouvrir le portail. Réessayez.'); },
     });
   }
 
